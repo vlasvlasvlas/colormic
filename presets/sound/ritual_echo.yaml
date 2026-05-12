@@ -1,0 +1,28 @@
+name: Ritual Echo
+input_gain: 1.1
+master_gain: 0.85
+filter:
+  type: bandpass
+  frequency: 1800
+  q: 1.8
+compressor:
+  threshold: -22
+  knee: 18
+  ratio: 3.2
+  attack: 0.01
+  release: 0.32
+reverb:
+  seconds: 4.5
+  decay: 3.2
+  pre_delay_ms: 70
+  mix: 0.55
+delay:
+  time_s: 0.52
+  feedback: 0.48
+  mix: 0.38
+lfo:
+  enabled: true
+  target: master_gain
+  waveform: triangle
+  frequency_hz: 0.09
+  amount: 0.18

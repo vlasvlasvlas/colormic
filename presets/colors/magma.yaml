@@ -1,0 +1,15 @@
+name: Magma Bloom
+background: "#180404"
+grid:
+  columns: 10
+  rows: 3
+palette:
+  - "#13040a"
+  - "#5e0b15"
+  - "#a44200"
+  - "#f3a712"
+  - "#ffe8a3"
+interpolation: rgb
+reactivity:
+  energy_to_brightness: 0.8
+  centroid_to_hue_shift: 0.2

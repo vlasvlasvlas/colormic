@@ -1,0 +1,28 @@
+name: Ambient Glass
+input_gain: 1.0
+master_gain: 0.8
+filter:
+  type: lowpass
+  frequency: 6800
+  q: 0.7
+compressor:
+  threshold: -28
+  knee: 24
+  ratio: 4
+  attack: 0.008
+  release: 0.25
+reverb:
+  seconds: 2.8
+  decay: 2.5
+  pre_delay_ms: 35
+  mix: 0.45
+delay:
+  time_s: 0.38
+  feedback: 0.35
+  mix: 0.28
+lfo:
+  enabled: true
+  target: filter.frequency
+  waveform: sine
+  frequency_hz: 0.17
+  amount: 1800
