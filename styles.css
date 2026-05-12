@@ -216,8 +216,13 @@ label {
 }
 
 select,
-textarea {
+textarea,
+input[type="range"] {
   width: 100%;
+}
+
+select,
+textarea {
   color: var(--ink);
   background: var(--panel-soft);
   border: 1px solid var(--panel-border);
@@ -265,6 +270,64 @@ textarea {
 
 .metrics strong {
   font-size: 0.92rem;
+}
+
+.live-controls {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 4px;
+  padding: 12px;
+  background: var(--panel-soft);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.range-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.range-row label {
+  margin: 0;
+}
+
+.range-row output {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+.toggle-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.toggle-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 9px;
+  color: var(--ink);
+  background: rgba(127, 127, 127, 0.08);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.toggle-line input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--hot);
 }
 
 .status {

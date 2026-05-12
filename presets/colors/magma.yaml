@@ -1,8 +1,5 @@
 name: Magma Bloom
 background: "#180404"
-grid:
-  columns: 10
-  rows: 3
 palette:
   - "#13040a"
   - "#5e0b15"

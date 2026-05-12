@@ -61,6 +61,35 @@
       </div>
     </div>
 
+    <div class="live-controls" aria-label="Controles visuales">
+      <div class="range-row">
+        <label for="micSensitivity">Mic sensitivity</label>
+        <output id="micSensitivityValue" for="micSensitivity">1.40x</output>
+      </div>
+      <input id="micSensitivity" type="range" min="0.2" max="5" step="0.05" value="1.4" />
+
+      <div class="range-row">
+        <label for="visualIntensity">Color intensity</label>
+        <output id="visualIntensityValue" for="visualIntensity">1.00</output>
+      </div>
+      <input id="visualIntensity" type="range" min="0" max="2" step="0.05" value="1" />
+
+      <div class="toggle-stack">
+        <label class="toggle-line">
+          <input id="toggleBlend" type="checkbox" checked />
+          <span>Color blend</span>
+        </label>
+        <label class="toggle-line">
+          <input id="toggleBloom" type="checkbox" checked />
+          <span>Bloom</span>
+        </label>
+        <label class="toggle-line">
+          <input id="toggleWaveform" type="checkbox" checked />
+          <span>Waveform</span>
+        </label>
+      </div>
+    </div>
+
     <label for="colorYaml">Color YAML</label>
     <textarea id="colorYaml" spellcheck="false"></textarea>
 

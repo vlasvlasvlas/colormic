@@ -38,6 +38,13 @@ const state = {
     centroid: 0,
     flux: 0,
   },
+  visual: {
+    micSensitivity: 1.4,
+    intensity: 1,
+    blend: true,
+    bloom: true,
+    waveform: true,
+  },
 };
 
 const ui = {
@@ -55,6 +62,13 @@ const ui = {
   soundPreset: document.getElementById("soundPreset"),
   colorYaml: document.getElementById("colorYaml"),
   soundYaml: document.getElementById("soundYaml"),
+  micSensitivity: document.getElementById("micSensitivity"),
+  micSensitivityValue: document.getElementById("micSensitivityValue"),
+  visualIntensity: document.getElementById("visualIntensity"),
+  visualIntensityValue: document.getElementById("visualIntensityValue"),
+  toggleBlend: document.getElementById("toggleBlend"),
+  toggleBloom: document.getElementById("toggleBloom"),
+  toggleWaveform: document.getElementById("toggleWaveform"),
   status: document.getElementById("status"),
   mRms: document.getElementById("mRms"),
   mCentroid: document.getElementById("mCentroid"),
@@ -123,6 +137,11 @@ function setBackgroundMode(mode) {
   drawSilence();
 }
 
+function updateLiveControlLabels() {
+  ui.micSensitivityValue.textContent = `${state.visual.micSensitivity.toFixed(2)}x`;
+  ui.visualIntensityValue.textContent = state.visual.intensity.toFixed(2);
+}
+
 function colorAt(t) {
   const cfg = state.color;
   const palette = cfg.palette;
@@ -154,10 +173,6 @@ function applyColorConfig(cfg) {
     name: cfg.name || "Color preset",
     palette: cfg.palette,
     interpolation: ["rgb", "lab", "hsl", "hsv", "hcl"].includes(cfg.interpolation) ? cfg.interpolation : "lab",
-    grid: {
-      cols: clamp(Number(cfg.grid?.columns ?? 8), 2, 30),
-      rows: clamp(Number(cfg.grid?.rows ?? 4), 1, 18),
-    },
     reactivity: {
       energyToBrightness: clamp(Number(cfg.reactivity?.energy_to_brightness ?? 0.7), 0, 1.4),
       centroidToHueShift: clamp(Number(cfg.reactivity?.centroid_to_hue_shift ?? 0.3), 0, 1),
@@ -384,29 +399,41 @@ function computeMetrics(freqData, timeData, sampleRate) {
   state.audioMetrics.flux = fluxAcc / (freqData.length * 255);
 }
 
-function drawColorField(freqData, energy, centroidNorm) {
-  const { cols, rows } = state.color.grid;
-  const cellW = state.width / cols;
-  const cellH = state.height / rows;
+function drawColorBlend(freqData, energy, centroidNorm) {
   const mode = state.backgroundMode === "black" ? "screen" : "multiply";
+  const time = performance.now() * 0.00028;
+  const layers = 7;
 
   ctx.save();
   ctx.globalCompositeOperation = mode;
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const index = y * cols + x;
-      const bin = Math.floor((index / Math.max(1, cols * rows - 1)) * (freqData.length - 1));
-      const band = freqData[bin] / 255;
-      const t = (index / Math.max(1, cols * rows - 1) + centroidNorm * state.color.reactivity.centroidToHueShift) % 1;
-      const color = colorAt(t);
-      const alpha = clamp(0.04 + band * 0.38 + energy * 0.18, 0.02, 0.58);
-      const inset = clamp((1 - band) * 14, 1, 14);
 
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = color.hex();
-      ctx.fillRect(x * cellW + inset, y * cellH + inset, cellW - inset * 2, cellH - inset * 2);
-    }
+  for (let i = 0; i < layers; i++) {
+    const bin = Math.floor((i / layers) * (freqData.length - 1));
+    const band = freqData[bin] / 255;
+    const orbit = time + i * 1.37 + centroidNorm * 2.1;
+    const x = state.width * (0.5 + Math.cos(orbit) * (0.16 + band * 0.24));
+    const y = state.height * (0.5 + Math.sin(orbit * 1.23) * (0.14 + energy * 0.2));
+    const radius = Math.max(state.width, state.height) * (0.34 + energy * 0.52 + band * 0.24);
+    const hueT = (centroidNorm * state.color.reactivity.centroidToHueShift + i / layers + band * 0.22 + time * 0.18) % 1;
+    const color = colorAt(hueT).hex();
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.48, color);
+    gradient.addColorStop(1, "transparent");
+
+    ctx.globalAlpha = clamp((0.12 + band * 0.42 + energy * 0.28) * state.visual.intensity, 0, 0.72);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, state.width, state.height);
   }
+
+  const wash = ctx.createLinearGradient(0, 0, state.width, state.height);
+  for (let i = 0; i < state.color.palette.length; i++) {
+    wash.addColorStop(i / Math.max(1, state.color.palette.length - 1), state.color.palette[i]);
+  }
+  ctx.globalAlpha = clamp(energy * 0.32 * state.visual.intensity, 0, 0.36);
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, state.width, state.height);
   ctx.restore();
 }
 
@@ -426,7 +453,7 @@ function drawBloom(freqData, energy, centroidNorm) {
     gradient.addColorStop(0, color);
     gradient.addColorStop(0.55, color);
     gradient.addColorStop(1, "transparent");
-    ctx.globalAlpha = clamp(energy * 0.22 + band * 0.2, 0.02, 0.5);
+    ctx.globalAlpha = clamp((energy * 0.22 + band * 0.2) * state.visual.intensity, 0, 0.58);
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -451,7 +478,7 @@ function drawWave(timeData, energy, centroidNorm) {
 
   ctx.strokeStyle = gradient;
   ctx.lineWidth = clamp(2 + energy * 22, 2, 28);
-  ctx.globalAlpha = clamp(0.12 + energy * 0.9, 0.12, 0.96);
+  ctx.globalAlpha = clamp((0.12 + energy * 0.9) * state.visual.intensity, 0, 0.96);
   ctx.beginPath();
   for (let x = 0; x < state.width; x += 6) {
     const idx = Math.floor((x / state.width) * (timeData.length - 1));
@@ -465,17 +492,18 @@ function drawWave(timeData, energy, centroidNorm) {
 }
 
 function drawVisual(freqData, timeData) {
-  const energy = clamp(state.audioMetrics.rms * 2.5, 0, 1);
+  const sensitivity = state.visual.micSensitivity;
+  const energy = clamp(state.audioMetrics.rms * 2.5 * sensitivity, 0, 1);
   const centroidNorm = clamp(state.audioMetrics.centroid / 6500, 0, 1);
 
   ctx.fillStyle = getBackgroundColor();
   ctx.fillRect(0, 0, state.width, state.height);
 
-  if (energy < 0.012 && state.audioMetrics.flux < 0.006) return;
+  if (energy < 0.012 && state.audioMetrics.flux * sensitivity < 0.006) return;
 
-  drawColorField(freqData, energy, centroidNorm);
-  drawBloom(freqData, energy, centroidNorm);
-  drawWave(timeData, energy, centroidNorm);
+  if (state.visual.blend) drawColorBlend(freqData, energy, centroidNorm);
+  if (state.visual.bloom) drawBloom(freqData, energy, centroidNorm);
+  if (state.visual.waveform) drawWave(timeData, energy, centroidNorm);
 }
 
 function updateMetricsUi() {
@@ -510,6 +538,7 @@ async function bootstrap() {
   await loadPreset(colorPresetList[0], ui.colorYaml);
   await loadPreset(soundPresetList[0], ui.soundYaml);
   await applyEditors();
+  updateLiveControlLabels();
 
   ui.settingsToggle.addEventListener("click", () => ui.sidebar.classList.add("is-open"));
   ui.closeSidebar.addEventListener("click", () => ui.sidebar.classList.remove("is-open"));
@@ -541,6 +570,26 @@ async function bootstrap() {
   ui.soundPreset.addEventListener("change", async () => {
     await loadPreset(ui.soundPreset.value, ui.soundYaml);
     applySoundConfig(parseYamlText(ui.soundYaml.value, "Sound YAML"));
+  });
+  ui.micSensitivity.addEventListener("input", () => {
+    state.visual.micSensitivity = Number(ui.micSensitivity.value);
+    updateLiveControlLabels();
+  });
+  ui.visualIntensity.addEventListener("input", () => {
+    state.visual.intensity = Number(ui.visualIntensity.value);
+    updateLiveControlLabels();
+  });
+  ui.toggleBlend.addEventListener("change", () => {
+    state.visual.blend = ui.toggleBlend.checked;
+    if (!state.running) drawSilence();
+  });
+  ui.toggleBloom.addEventListener("change", () => {
+    state.visual.bloom = ui.toggleBloom.checked;
+    if (!state.running) drawSilence();
+  });
+  ui.toggleWaveform.addEventListener("change", () => {
+    state.visual.waveform = ui.toggleWaveform.checked;
+    if (!state.running) drawSilence();
   });
   window.addEventListener("resize", resizeCanvas);
 }

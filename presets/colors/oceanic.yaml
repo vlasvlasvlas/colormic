@@ -1,8 +1,5 @@
 name: Oceanic Flux
 background: "#03111f"
-grid:
-  columns: 8
-  rows: 4
 palette:
   - "#001f3f"
   - "#0074D9"
