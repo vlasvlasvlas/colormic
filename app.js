@@ -36,11 +36,14 @@ const state = {
   audioMetrics: {
     rms: 0,
     centroid: 0,
+    pitch: 0,
+    pitchConfidence: 0,
+    pitchNorm: 0,
     flux: 0,
   },
   visual: {
-    micSensitivity: 1.4,
-    intensity: 1,
+    micSensitivity: 2,
+    intensity: 1.2,
     blend: true,
     bloom: true,
     waveform: true,
@@ -72,6 +75,7 @@ const ui = {
   status: document.getElementById("status"),
   mRms: document.getElementById("mRms"),
   mCentroid: document.getElementById("mCentroid"),
+  mPitch: document.getElementById("mPitch"),
   mFlux: document.getElementById("mFlux"),
 };
 
@@ -145,7 +149,8 @@ function updateLiveControlLabels() {
 function colorAt(t) {
   const cfg = state.color;
   const palette = cfg.palette;
-  const scaled = clamp(t, 0, 1) * (palette.length - 1);
+  const normalizedT = ((t % 1) + 1) % 1;
+  const scaled = normalizedT * (palette.length - 1);
   const i = Math.floor(scaled);
   const localT = scaled - i;
   return chroma.interpolate(
@@ -154,6 +159,71 @@ function colorAt(t) {
     localT,
     cfg.interpolation
   );
+}
+
+function normalizePitch(pitch) {
+  if (!pitch) return 0;
+  const minPitch = 75;
+  const maxPitch = 850;
+  return clamp(Math.log2(pitch / minPitch) / Math.log2(maxPitch / minPitch), 0, 1);
+}
+
+function estimatePitch(timeData, sampleRate, rms) {
+  if (rms < 0.012) return { pitch: 0, confidence: 0 };
+
+  const minLag = Math.floor(sampleRate / 900);
+  const maxLag = Math.floor(sampleRate / 75);
+  let bestLag = -1;
+  let bestCorrelation = 0;
+
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let correlation = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < timeData.length - lag; i += 2) {
+      const a = (timeData[i] - 128) / 128;
+      const b = (timeData[i + lag] - 128) / 128;
+      correlation += a * b;
+      normA += a * a;
+      normB += b * b;
+    }
+
+    const normalized = correlation / (Math.sqrt(normA * normB) || 1);
+    if (normalized > bestCorrelation) {
+      bestCorrelation = normalized;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag < 0 || bestCorrelation < 0.28) return { pitch: 0, confidence: 0 };
+  return {
+    pitch: sampleRate / bestLag,
+    confidence: clamp((bestCorrelation - 0.28) / 0.42, 0, 1),
+  };
+}
+
+function voiceColorDriver(centroidNorm) {
+  const pitchWeight = clamp(state.audioMetrics.pitchConfidence, 0, 1);
+  return (
+    state.audioMetrics.pitchNorm * pitchWeight +
+    centroidNorm * (1 - pitchWeight)
+  ) % 1;
+}
+
+function voiceColorAt(t, energy, pitchNorm) {
+  const hsl = colorAt(t).hsl();
+  const hue = Number.isFinite(hsl[0]) ? hsl[0] : 0;
+  const saturation = clamp((hsl[1] || 0.7) + 0.16 + energy * 0.2, 0, 1);
+  const lightness = clamp(
+    (hsl[2] || 0.45) +
+      energy * state.color.reactivity.energyToBrightness * 0.46 +
+      pitchNorm * 0.18,
+    0.06,
+    0.96
+  );
+
+  return chroma.hsl(hue, saturation, lightness);
 }
 
 function drawSilence() {
@@ -394,12 +464,36 @@ function computeMetrics(freqData, timeData, sampleRate) {
     state.prevSpectrum[i] = freqData[i];
   }
 
-  state.audioMetrics.rms = Math.sqrt(sumSq / timeData.length);
+  const rms = Math.sqrt(sumSq / timeData.length);
+  const pitchEstimate = estimatePitch(timeData, sampleRate, rms);
+  const detectedPitchNorm = normalizePitch(pitchEstimate.pitch);
+
+  state.audioMetrics.rms = rms;
   state.audioMetrics.centroid = magSum > 0 ? weighted / magSum : 0;
+  state.audioMetrics.pitch = pitchEstimate.pitch;
+  state.audioMetrics.pitchConfidence = pitchEstimate.confidence;
+  state.audioMetrics.pitchNorm = pitchEstimate.confidence > 0
+    ? state.audioMetrics.pitchNorm * 0.68 + detectedPitchNorm * 0.32
+    : state.audioMetrics.pitchNorm * 0.96;
   state.audioMetrics.flux = fluxAcc / (freqData.length * 255);
 }
 
-function drawColorBlend(freqData, energy, centroidNorm) {
+function drawVoiceWash(energy, colorDriver) {
+  ctx.save();
+  ctx.globalCompositeOperation = state.backgroundMode === "black" ? "screen" : "multiply";
+
+  const gradient = ctx.createLinearGradient(0, 0, state.width, state.height);
+  gradient.addColorStop(0, voiceColorAt(colorDriver - 0.22, energy, colorDriver).hex());
+  gradient.addColorStop(0.48, voiceColorAt(colorDriver, energy, colorDriver).hex());
+  gradient.addColorStop(1, voiceColorAt(colorDriver + 0.28, energy, colorDriver).hex());
+
+  ctx.globalAlpha = clamp((0.18 + energy * 0.7) * state.visual.intensity, 0, 0.92);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, state.width, state.height);
+  ctx.restore();
+}
+
+function drawColorBlend(freqData, energy, centroidNorm, colorDriver) {
   const mode = state.backgroundMode === "black" ? "screen" : "multiply";
   const time = performance.now() * 0.00028;
   const layers = 7;
@@ -410,12 +504,12 @@ function drawColorBlend(freqData, energy, centroidNorm) {
   for (let i = 0; i < layers; i++) {
     const bin = Math.floor((i / layers) * (freqData.length - 1));
     const band = freqData[bin] / 255;
-    const orbit = time + i * 1.37 + centroidNorm * 2.1;
+    const orbit = time + i * 1.37 + colorDriver * 3.6 + centroidNorm * 0.7;
     const x = state.width * (0.5 + Math.cos(orbit) * (0.16 + band * 0.24));
     const y = state.height * (0.5 + Math.sin(orbit * 1.23) * (0.14 + energy * 0.2));
     const radius = Math.max(state.width, state.height) * (0.34 + energy * 0.52 + band * 0.24);
-    const hueT = (centroidNorm * state.color.reactivity.centroidToHueShift + i / layers + band * 0.22 + time * 0.18) % 1;
-    const color = colorAt(hueT).hex();
+    const hueT = (colorDriver + i / layers * 0.42 + band * 0.18 + time * 0.08) % 1;
+    const color = voiceColorAt(hueT, energy, colorDriver).hex();
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
 
     gradient.addColorStop(0, color);
@@ -427,18 +521,19 @@ function drawColorBlend(freqData, energy, centroidNorm) {
     ctx.fillRect(0, 0, state.width, state.height);
   }
 
-  const wash = ctx.createLinearGradient(0, 0, state.width, state.height);
+  const wash = ctx.createLinearGradient(0, state.height, state.width, 0);
   for (let i = 0; i < state.color.palette.length; i++) {
-    wash.addColorStop(i / Math.max(1, state.color.palette.length - 1), state.color.palette[i]);
+    const t = (i / Math.max(1, state.color.palette.length - 1) + colorDriver * 0.65) % 1;
+    wash.addColorStop(i / Math.max(1, state.color.palette.length - 1), voiceColorAt(t, energy, colorDriver).hex());
   }
-  ctx.globalAlpha = clamp(energy * 0.32 * state.visual.intensity, 0, 0.36);
+  ctx.globalAlpha = clamp((0.08 + energy * 0.42) * state.visual.intensity, 0, 0.58);
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, state.width, state.height);
   ctx.restore();
 }
 
-function drawBloom(freqData, energy, centroidNorm) {
-  const cx = state.width * (0.18 + centroidNorm * 0.64);
+function drawBloom(freqData, energy, centroidNorm, colorDriver) {
+  const cx = state.width * (0.18 + colorDriver * 0.64);
   const cy = state.height * (0.5 + Math.sin(performance.now() * 0.0006) * 0.22);
   const maxRadius = Math.max(state.width, state.height) * (0.18 + energy * 0.72);
 
@@ -448,7 +543,7 @@ function drawBloom(freqData, energy, centroidNorm) {
     const bin = Math.floor((i / 5) * (freqData.length - 1));
     const band = freqData[bin] / 255;
     const radius = maxRadius * (0.28 + i * 0.18 + band * 0.3);
-    const color = colorAt((centroidNorm + i * 0.17 + band * 0.2) % 1).hex();
+    const color = voiceColorAt((colorDriver + i * 0.17 + band * 0.2) % 1, energy, colorDriver).hex();
     const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
     gradient.addColorStop(0, color);
     gradient.addColorStop(0.55, color);
@@ -462,7 +557,7 @@ function drawBloom(freqData, energy, centroidNorm) {
   ctx.restore();
 }
 
-function drawWave(timeData, energy, centroidNorm) {
+function drawWave(timeData, energy, centroidNorm, colorDriver) {
   const midY = state.height * (0.48 + (centroidNorm - 0.5) * 0.22);
   const amp = state.height * (0.12 + energy * 0.35);
 
@@ -473,7 +568,8 @@ function drawWave(timeData, energy, centroidNorm) {
 
   const gradient = ctx.createLinearGradient(0, 0, state.width, 0);
   for (let i = 0; i < state.color.palette.length; i++) {
-    gradient.addColorStop(i / Math.max(1, state.color.palette.length - 1), state.color.palette[i]);
+    const t = (colorDriver + i / Math.max(1, state.color.palette.length - 1)) % 1;
+    gradient.addColorStop(i / Math.max(1, state.color.palette.length - 1), voiceColorAt(t, energy, colorDriver).hex());
   }
 
   ctx.strokeStyle = gradient;
@@ -495,20 +591,27 @@ function drawVisual(freqData, timeData) {
   const sensitivity = state.visual.micSensitivity;
   const energy = clamp(state.audioMetrics.rms * 2.5 * sensitivity, 0, 1);
   const centroidNorm = clamp(state.audioMetrics.centroid / 6500, 0, 1);
+  const colorDriver = voiceColorDriver(centroidNorm);
 
   ctx.fillStyle = getBackgroundColor();
   ctx.fillRect(0, 0, state.width, state.height);
 
   if (energy < 0.012 && state.audioMetrics.flux * sensitivity < 0.006) return;
 
-  if (state.visual.blend) drawColorBlend(freqData, energy, centroidNorm);
-  if (state.visual.bloom) drawBloom(freqData, energy, centroidNorm);
-  if (state.visual.waveform) drawWave(timeData, energy, centroidNorm);
+  if (state.visual.blend) {
+    drawVoiceWash(energy, colorDriver);
+    drawColorBlend(freqData, energy, centroidNorm, colorDriver);
+  }
+  if (state.visual.bloom) drawBloom(freqData, energy, centroidNorm, colorDriver);
+  if (state.visual.waveform) drawWave(timeData, energy, centroidNorm, colorDriver);
 }
 
 function updateMetricsUi() {
   ui.mRms.textContent = state.audioMetrics.rms.toFixed(3);
   ui.mCentroid.textContent = `${Math.round(state.audioMetrics.centroid)} Hz`;
+  ui.mPitch.textContent = state.audioMetrics.pitchConfidence > 0.05
+    ? `${Math.round(state.audioMetrics.pitch)} Hz`
+    : "0 Hz";
   ui.mFlux.textContent = state.audioMetrics.flux.toFixed(3);
 }
 
