@@ -3,7 +3,7 @@ const colorPresetList = [
   "presets/colors/magma.yaml",
 ];
 
-const ASSET_VERSION = "20260513-1";
+const ASSET_VERSION = "20260513-2";
 
 const soundPresetList = [
   "presets/sound/ambient_glass.yaml",
@@ -593,118 +593,84 @@ function computeMetrics(freqData, timeData, sampleRate) {
   state.audioMetrics.pitch = pitchEstimate.pitch;
   state.audioMetrics.pitchConfidence = pitchEstimate.confidence;
   state.audioMetrics.pitchNorm = pitchEstimate.confidence > 0
-    ? state.audioMetrics.pitchNorm * 0.68 + detectedPitchNorm * 0.32
-    : state.audioMetrics.pitchNorm * 0.96;
+    ? state.audioMetrics.pitchNorm * 0.25 + detectedPitchNorm * 0.75
+    : state.audioMetrics.pitchNorm * 0.85;
   state.audioMetrics.voiceFrequency = voiceFrequency;
   state.audioMetrics.voiceNorm = rms > 0.01
-    ? state.audioMetrics.voiceNorm * 0.68 + detectedVoiceNorm * 0.32
-    : state.audioMetrics.voiceNorm * 0.96;
+    ? state.audioMetrics.voiceNorm * 0.25 + detectedVoiceNorm * 0.75
+    : state.audioMetrics.voiceNorm * 0.85;
   state.audioMetrics.flux = fluxAcc / (freqData.length * 255);
 }
 
-function drawVoiceWash(energy, colorDriver) {
-  ctx.save();
-  ctx.globalCompositeOperation = state.backgroundMode === "black" ? "screen" : "multiply";
-
-  const gradient = ctx.createLinearGradient(0, 0, state.width, state.height);
-  gradient.addColorStop(0, voiceColorAt(colorDriver - 0.22, energy, colorDriver).hex());
-  gradient.addColorStop(0.48, voiceColorAt(colorDriver, energy, colorDriver).hex());
-  gradient.addColorStop(1, voiceColorAt(colorDriver + 0.28, energy, colorDriver).hex());
-
-  ctx.globalAlpha = clamp((0.18 + energy * 0.7) * state.visual.intensity, 0, 0.92);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, state.width, state.height);
-  ctx.restore();
-}
-
-function drawColorBlend(freqData, energy, centroidNorm, colorDriver) {
-  const mode = state.backgroundMode === "black" ? "screen" : "multiply";
-  const time = performance.now() * 0.00028;
-  const layers = 7;
+// ── Sharp spectrum bars: each bar colored by its own freq position ──────────
+function drawSpectrumBars(freqData, energy, colorDriver) {
+  const isBlack = state.backgroundMode === "black";
+  const binCount = freqData.length;
+  // Use log scale: covers bass to highs naturally
+  const barCount = Math.min(128, Math.floor(state.width / 4));
+  const barW = state.width / barCount;
+  const maxH = state.height * 0.72;
 
   ctx.save();
-  ctx.globalCompositeOperation = mode;
+  ctx.globalCompositeOperation = isBlack ? "screen" : "multiply";
 
-  for (let i = 0; i < layers; i++) {
-    const bin = Math.floor((i / layers) * (freqData.length - 1));
-    const band = freqData[bin] / 255;
-    const orbit = time + i * 1.37 + colorDriver * 3.6 + centroidNorm * 0.7;
-    const x = state.width * (0.5 + Math.cos(orbit) * (0.16 + band * 0.24));
-    const y = state.height * (0.5 + Math.sin(orbit * 1.23) * (0.14 + energy * 0.2));
-    const radius = Math.max(state.width, state.height) * (0.34 + energy * 0.52 + band * 0.24);
-    const hueT = (colorDriver + i / layers * 0.42 + band * 0.18 + time * 0.08) % 1;
-    const color = voiceColorAt(hueT, energy, colorDriver).hex();
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  for (let i = 0; i < barCount; i++) {
+    // Log-mapped bin index: emphasizes voice range (bass heavier)
+    const logT = Math.pow(i / barCount, 1.6);
+    const bin = Math.floor(logT * binCount * 0.82);
+    const mag = freqData[bin] / 255;
+    if (mag < 0.015) continue;
 
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(0.48, color);
-    gradient.addColorStop(1, "transparent");
+    const freqT = i / barCount; // color by position in bar range
+    const color = voiceColorAt(freqT, energy, colorDriver);
+    const barH = Math.pow(mag, 0.7) * maxH * state.visual.intensity;
+    const x = i * barW;
+    const y = state.height - barH;
 
-    ctx.globalAlpha = clamp((0.12 + band * 0.42 + energy * 0.28) * state.visual.intensity, 0, 0.72);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, state.width, state.height);
-  }
-
-  const wash = ctx.createLinearGradient(0, state.height, state.width, 0);
-  const washStops = 5;
-  for (let i = 0; i < washStops; i++) {
-    const stop = i / (washStops - 1);
-    const t = stop * 0.65 + colorDriver * 0.35;
-    wash.addColorStop(stop, voiceColorAt(t, energy, colorDriver).hex());
-  }
-  ctx.globalAlpha = clamp((0.08 + energy * 0.42) * state.visual.intensity, 0, 0.58);
-  ctx.fillStyle = wash;
-  ctx.fillRect(0, 0, state.width, state.height);
-  ctx.restore();
-}
-
-function drawBloom(freqData, energy, centroidNorm, colorDriver) {
-  const cx = state.width * (0.18 + colorDriver * 0.64);
-  const cy = state.height * (0.5 + Math.sin(performance.now() * 0.0006) * 0.22);
-  const maxRadius = Math.max(state.width, state.height) * (0.18 + energy * 0.72);
-
-  ctx.save();
-  ctx.globalCompositeOperation = state.backgroundMode === "black" ? "lighter" : "multiply";
-  for (let i = 0; i < 5; i++) {
-    const bin = Math.floor((i / 5) * (freqData.length - 1));
-    const band = freqData[bin] / 255;
-    const radius = maxRadius * (0.28 + i * 0.18 + band * 0.3);
-    const color = voiceColorAt((colorDriver + i * 0.17 + band * 0.2) % 1, energy, colorDriver).hex();
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(0.55, color);
-    gradient.addColorStop(1, "transparent");
-    ctx.globalAlpha = clamp((energy * 0.22 + band * 0.2) * state.visual.intensity, 0, 0.58);
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = clamp(mag * 0.95, 0.05, 1);
+    ctx.fillStyle = color.hex();
+    ctx.fillRect(x, y, barW - 1, barH);
   }
   ctx.restore();
 }
 
-function drawWave(timeData, energy, centroidNorm, colorDriver) {
-  const midY = state.height * (0.48 + (centroidNorm - 0.5) * 0.22);
-  const amp = state.height * (0.12 + energy * 0.35);
+// ── Dominant-frequency indicator: vertical line at colorDriver position ──────
+function drawFreqLine(energy, colorDriver) {
+  if (energy < 0.025) return;
+  const isBlack = state.backgroundMode === "black";
+  const x = Math.round(colorDriver * state.width);
+  const color = voiceColorAt(colorDriver, energy, colorDriver);
 
   ctx.save();
-  ctx.globalCompositeOperation = state.backgroundMode === "black" ? "screen" : "multiply";
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  const gradient = ctx.createLinearGradient(0, 0, state.width, 0);
-  const waveStops = 5;
-  for (let i = 0; i < waveStops; i++) {
-    const stop = i / (waveStops - 1);
-    const t = stop * 0.7 + colorDriver * 0.3;
-    gradient.addColorStop(stop, voiceColorAt(t, energy, colorDriver).hex());
-  }
-
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = clamp(2 + energy * 22, 2, 28);
-  ctx.globalAlpha = clamp((0.12 + energy * 0.9) * state.visual.intensity, 0, 0.96);
+  ctx.globalCompositeOperation = isBlack ? "screen" : "multiply";
+  ctx.globalAlpha = clamp(energy * state.visual.intensity * 0.85, 0, 1);
+  ctx.strokeStyle = color.hex();
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  for (let x = 0; x < state.width; x += 6) {
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, state.height);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── Crisp waveform: pixel-resolution, thin, sharp ───────────────────────────
+function drawSharpWave(timeData, energy, colorDriver) {
+  if (energy < 0.015) return;
+  const isBlack = state.backgroundMode === "black";
+  const midY = state.height * 0.5;
+  const amp = state.height * (0.06 + energy * 0.3) * state.visual.intensity;
+  const color = voiceColorAt(colorDriver, energy, colorDriver);
+
+  ctx.save();
+  ctx.globalCompositeOperation = isBlack ? "screen" : "multiply";
+  ctx.strokeStyle = color.hex();
+  ctx.lineWidth = clamp(1 + energy * 2, 1, 3);
+  ctx.globalAlpha = clamp(0.5 + energy * 0.5, 0, 1);
+  ctx.lineCap = "square";
+  ctx.lineJoin = "miter";
+  ctx.beginPath();
+
+  for (let x = 0; x < state.width; x++) {
     const idx = Math.floor((x / state.width) * (timeData.length - 1));
     const normalized = (timeData[idx] - 128) / 128;
     const y = midY + normalized * amp;
@@ -721,17 +687,35 @@ function drawVisual(freqData, timeData) {
   const centroidNorm = clamp(state.audioMetrics.centroid / 6500, 0, 1);
   const colorDriver = voiceColorDriver(centroidNorm);
 
+  // Clear with a very fast fade (not full black) to leave a crisp trail
+  const trailAlpha = clamp(0.55 + energy * 0.35, 0.55, 0.92);
+  ctx.save();
+  ctx.globalAlpha = trailAlpha;
   ctx.fillStyle = getBackgroundColor();
   ctx.fillRect(0, 0, state.width, state.height);
+  ctx.restore();
 
   if (energy < 0.012 && state.audioMetrics.flux * sensitivity < 0.006) return;
 
+  // Solid color flash: direct mapping of current freq → background tint
   if (state.visual.blend) {
-    drawVoiceWash(energy, colorDriver);
-    drawColorBlend(freqData, energy, centroidNorm, colorDriver);
+    const flashColor = voiceColorAt(colorDriver, energy, colorDriver);
+    ctx.save();
+    ctx.globalCompositeOperation = state.backgroundMode === "black" ? "screen" : "multiply";
+    ctx.globalAlpha = clamp(energy * 0.28 * state.visual.intensity, 0, 0.45);
+    ctx.fillStyle = flashColor.hex();
+    ctx.fillRect(0, 0, state.width, state.height);
+    ctx.restore();
   }
-  if (state.visual.bloom) drawBloom(freqData, energy, centroidNorm, colorDriver);
-  if (state.visual.waveform) drawWave(timeData, energy, centroidNorm, colorDriver);
+
+  // Sharp spectrum EQ bars
+  if (state.visual.bloom) drawSpectrumBars(freqData, energy, colorDriver);
+
+  // Dominant frequency line
+  drawFreqLine(energy, colorDriver);
+
+  // Crisp waveform
+  if (state.visual.waveform) drawSharpWave(timeData, energy, colorDriver);
 }
 
 function updateMetricsUi() {
