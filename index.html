@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="ColorMic: visuales y sonido reactivo al microfono con presets YAML." />
   <title>ColorMic</title>
-  <link rel="stylesheet" href="styles.css?v=20260512-7" />
+  <link rel="stylesheet" href="styles.css?v=20260513-1" />
   <script src="js-yaml.min.js"></script>
   <script src="chroma.js"></script>
-  <script src="app.js?v=20260512-7" defer></script>
+  <script src="app.js?v=20260513-1" defer></script>
 </head>
 <body class="theme-black">
   <canvas id="stage" aria-label="ColorMic performance canvas"></canvas>
@@ -48,20 +48,16 @@
 
     <div class="metrics">
       <div>
-        <span>RMS</span>
-        <strong id="mRms">0.000</strong>
+        <span>Frecuencia</span>
+        <strong id="mFreq">0 Hz</strong>
       </div>
       <div>
-        <span>Voice Hz</span>
-        <strong id="mCentroid">0 Hz</strong>
+        <span>Nota</span>
+        <strong id="mNote">&mdash;</strong>
       </div>
       <div>
-        <span>Pitch</span>
-        <strong id="mPitch">0 Hz</strong>
-      </div>
-      <div>
-        <span>Flux</span>
-        <strong id="mFlux">0.000</strong>
+        <span>Volumen</span>
+        <strong id="mVol">0%</strong>
       </div>
     </div>
 
@@ -105,6 +101,12 @@
         <output id="visualIntensityValue" for="visualIntensity">1.20</output>
       </div>
       <input id="visualIntensity" type="range" min="0" max="2" step="0.05" value="1.2" />
+
+      <div class="range-row">
+        <label for="masterVolume">Volumen principal</label>
+        <output id="masterVolumeValue" for="masterVolume">80%</output>
+      </div>
+      <input id="masterVolume" type="range" min="0" max="1" step="0.01" value="0.8" />
 
       <div class="toggle-stack">
         <label class="toggle-line">

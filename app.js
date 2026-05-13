@@ -3,7 +3,7 @@ const colorPresetList = [
   "presets/colors/magma.yaml",
 ];
 
-const ASSET_VERSION = "20260512-7";
+const ASSET_VERSION = "20260513-1";
 
 const soundPresetList = [
   "presets/sound/ambient_glass.yaml",
@@ -44,10 +44,12 @@ const state = {
     voiceFrequency: 0,
     voiceNorm: 0,
     flux: 0,
+    noteLabel: "—",
   },
   visual: {
     micSensitivity: 2,
     intensity: 1.2,
+    masterVolume: 0.8,
     voiceFloorHz: 60,
     voiceCeilingHz: 4000,
     voiceFloorColor: "#2447ff",
@@ -81,6 +83,8 @@ const ui = {
   micSensitivityValue: document.getElementById("micSensitivityValue"),
   visualIntensity: document.getElementById("visualIntensity"),
   visualIntensityValue: document.getElementById("visualIntensityValue"),
+  masterVolume: document.getElementById("masterVolume"),
+  masterVolumeValue: document.getElementById("masterVolumeValue"),
   voiceFloorHz: document.getElementById("voiceFloorHz"),
   voiceCeilingHz: document.getElementById("voiceCeilingHz"),
   voiceRangeValue: document.getElementById("voiceRangeValue"),
@@ -91,10 +95,9 @@ const ui = {
   toggleBloom: document.getElementById("toggleBloom"),
   toggleWaveform: document.getElementById("toggleWaveform"),
   status: document.getElementById("status"),
-  mRms: document.getElementById("mRms"),
-  mCentroid: document.getElementById("mCentroid"),
-  mPitch: document.getElementById("mPitch"),
-  mFlux: document.getElementById("mFlux"),
+  mFreq: document.getElementById("mFreq"),
+  mNote: document.getElementById("mNote"),
+  mVol: document.getElementById("mVol"),
 };
 
 const ctx = ui.stage.getContext("2d");
@@ -160,11 +163,21 @@ function setBackgroundMode(mode) {
   drawSilence();
 }
 
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function pitchToNoteName(hz) {
+  if (!hz || hz < 20) return "—";
+  const midi = Math.round(12 * Math.log2(hz / 440) + 69);
+  const octave = Math.floor(midi / 12) - 1;
+  return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${octave}`;
+}
+
 function updateLiveControlLabels() {
   const floorHz = Math.round(state.visual.voiceFloorHz);
   const ceilingHz = Math.round(state.visual.voiceCeilingHz);
   ui.micSensitivityValue.textContent = `${state.visual.micSensitivity.toFixed(2)}x`;
   ui.visualIntensityValue.textContent = state.visual.intensity.toFixed(2);
+  ui.masterVolumeValue.textContent = `${Math.round(state.visual.masterVolume * 100)}%`;
   ui.voiceRangeValue.textContent = `${floorHz}-${ceilingHz} Hz`;
   ui.voiceRangePreview.style.background = `linear-gradient(90deg, ${state.visual.voiceFloorColor}, ${state.visual.voiceCeilingColor})`;
   ui.voiceFloorHz.value = String(floorHz);
@@ -395,7 +408,9 @@ function applySoundConfig(cfg) {
   const delay = cfg.delay || {};
 
   state.input.gain.setTargetAtTime(clamp(Number(cfg.input_gain ?? 1), 0, 2), now, 0.02);
-  state.masterGain.gain.setTargetAtTime(clamp(Number(cfg.master_gain ?? 0.8), 0, 2), now, 0.02);
+  // master_gain from YAML is the preset baseline; slider multiplies it
+  const yamlMaster = clamp(Number(cfg.master_gain ?? 0.8), 0, 2);
+  state.masterGain.gain.setTargetAtTime(yamlMaster * state.visual.masterVolume, now, 0.02);
   state.filter.type = filter.type || "lowpass";
   state.filter.frequency.setTargetAtTime(clamp(Number(filter.frequency ?? 6200), 40, 18000), now, 0.04);
   state.filter.Q.setTargetAtTime(clamp(Number(filter.q ?? 0.7), 0.001, 30), now, 0.04);
@@ -478,8 +493,8 @@ async function initAudio() {
   const dryGain = state.audioCtx.createGain();
   const masterGain = state.audioCtx.createGain();
 
-  analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0.78;
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.6;
   dryGain.gain.value = 0.86;
 
   source.connect(input);
@@ -720,12 +735,15 @@ function drawVisual(freqData, timeData) {
 }
 
 function updateMetricsUi() {
-  ui.mRms.textContent = state.audioMetrics.rms.toFixed(3);
-  ui.mCentroid.textContent = `${Math.round(state.audioMetrics.voiceFrequency)} Hz`;
-  ui.mPitch.textContent = state.audioMetrics.pitchConfidence > 0.05
-    ? `${Math.round(state.audioMetrics.pitch)} Hz`
-    : "0 Hz";
-  ui.mFlux.textContent = state.audioMetrics.flux.toFixed(3);
+  const freqHz = state.audioMetrics.pitchConfidence > 0.08
+    ? state.audioMetrics.pitch
+    : state.audioMetrics.voiceFrequency;
+  ui.mFreq.textContent = `${Math.round(freqHz)} Hz`;
+  ui.mNote.textContent = state.audioMetrics.pitchConfidence > 0.08
+    ? pitchToNoteName(state.audioMetrics.pitch)
+    : "—";
+  const volPct = Math.round(clamp(state.audioMetrics.rms * 6, 0, 1) * 100);
+  ui.mVol.textContent = `${volPct}%`;
 }
 
 function renderLoop() {
@@ -798,6 +816,17 @@ async function bootstrap() {
   ui.micSensitivity.addEventListener("input", () => {
     state.visual.micSensitivity = Number(ui.micSensitivity.value);
     updateLiveControlLabels();
+  });
+  ui.masterVolume.addEventListener("input", () => {
+    state.visual.masterVolume = Number(ui.masterVolume.value);
+    updateLiveControlLabels();
+    if (state.masterGain) {
+      const now = state.audioCtx.currentTime;
+      state.masterGain.gain.setTargetAtTime(
+        clamp(state.visual.masterVolume, 0, 2),
+        now, 0.02
+      );
+    }
   });
   ui.visualIntensity.addEventListener("input", () => {
     state.visual.intensity = Number(ui.visualIntensity.value);
