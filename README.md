@@ -63,6 +63,8 @@ Sonido:
 
 Los YAML se cargan en el sidebar y se pueden editar en vivo. Usar `Apply` para aplicar cambios manuales.
 
+`Apply` fusiona ambos lados de configuracion: si lo ultimo que tocaste fue el YAML, aplica el YAML; si lo ultimo que tocaste fueron controles del panel (`Piso Hz`, `Techo Hz`, `Piso voz`, `Techo voz`), esos valores se escriben en el YAML y se aplican. Asi no se pierden cambios por tocar controles directos.
+
 Ejemplo de color:
 
 ```yaml

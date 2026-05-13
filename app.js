@@ -3,7 +3,7 @@ const colorPresetList = [
   "presets/colors/magma.yaml",
 ];
 
-const ASSET_VERSION = "20260512-6";
+const ASSET_VERSION = "20260512-7";
 
 const soundPresetList = [
   "presets/sound/ambient_glass.yaml",
@@ -55,6 +55,10 @@ const state = {
     blend: true,
     bloom: true,
     waveform: true,
+  },
+  dirty: {
+    lastColorEdit: null,
+    lastSoundEdit: null,
   },
 };
 
@@ -167,6 +171,72 @@ function updateLiveControlLabels() {
   ui.voiceCeilingHz.value = String(ceilingHz);
   ui.voiceFloorColor.value = state.visual.voiceFloorColor;
   ui.voiceCeilingColor.value = state.visual.voiceCeilingColor;
+}
+
+function readVoiceControls() {
+  const floorHz = clamp(Number(ui.voiceFloorHz.value) || state.visual.voiceFloorHz, 20, 20000);
+  const ceilingHz = clamp(Number(ui.voiceCeilingHz.value) || state.visual.voiceCeilingHz, floorHz + 20, 22000);
+
+  return {
+    floor_hz: Math.round(floorHz),
+    ceiling_hz: Math.round(ceilingHz),
+    floor_color: ui.voiceFloorColor.value || state.visual.voiceFloorColor,
+    ceiling_color: ui.voiceCeilingColor.value || state.visual.voiceCeilingColor,
+  };
+}
+
+function applyVoiceControlsToState() {
+  const controls = readVoiceControls();
+  state.visual.voiceFloorHz = controls.floor_hz;
+  state.visual.voiceCeilingHz = controls.ceiling_hz;
+  state.visual.voiceFloorColor = controls.floor_color;
+  state.visual.voiceCeilingColor = controls.ceiling_color;
+  updateLiveControlLabels();
+}
+
+function mergeVoiceControlsIntoColorConfig(cfg) {
+  const controls = readVoiceControls();
+  return {
+    ...cfg,
+    voice_range: {
+      ...(cfg.voice_range || {}),
+      ...controls,
+    },
+  };
+}
+
+function upsertYamlLine(text, key, value) {
+  const line = `${key}: ${value}`;
+  const pattern = new RegExp(`^(\\s*${key}:\\s*).*$`, "m");
+  if (pattern.test(text)) return text.replace(pattern, `$1${value}`);
+  return `${text.replace(/\s*$/, "")}\n${line}\n`;
+}
+
+function patchColorYamlFromControls(text) {
+  let next = text;
+  if (!/^\s*voice_range:\s*$/m.test(next)) {
+    const block = [
+      "",
+      "# Rango que convierte frecuencia vocal en color.",
+      "# floor_hz = piso/grave; ceiling_hz = techo/agudo.",
+      "voice_range:",
+      "  floor_hz: 60",
+      "  ceiling_hz: 4000",
+      "  floor_color: \"#2447ff\"",
+      "  ceiling_color: \"#ffcf4a\"",
+      "",
+    ].join("\n");
+    next = /^\s*interpolation:\s*.+$/m.test(next)
+      ? next.replace(/^(\s*interpolation:\s*.+)$/m, `$1${block}`)
+      : `${next.replace(/\s*$/, "")}${block}`;
+  }
+
+  const controls = readVoiceControls();
+  next = upsertYamlLine(next, "floor_hz", controls.floor_hz);
+  next = upsertYamlLine(next, "ceiling_hz", controls.ceiling_hz);
+  next = upsertYamlLine(next, "floor_color", `"${controls.floor_color}"`);
+  next = upsertYamlLine(next, "ceiling_color", `"${controls.ceiling_color}"`);
+  return next;
 }
 
 function normalizeVoiceFrequency(frequency) {
@@ -368,8 +438,19 @@ function applySoundConfig(cfg) {
 }
 
 async function applyEditors() {
-  applyColorConfig(parseYamlText(ui.colorYaml.value, "Color YAML"));
+  let colorText = ui.colorYaml.value;
+  let colorConfig = parseYamlText(colorText, "Color YAML");
+
+  if (state.dirty.lastColorEdit === "controls") {
+    colorText = patchColorYamlFromControls(colorText);
+    ui.colorYaml.value = colorText;
+    colorConfig = mergeVoiceControlsIntoColorConfig(parseYamlText(colorText, "Color YAML"));
+  }
+
+  applyColorConfig(colorConfig);
   applySoundConfig(parseYamlText(ui.soundYaml.value, "Sound YAML"));
+  state.dirty.lastColorEdit = null;
+  state.dirty.lastSoundEdit = null;
 }
 
 async function initAudio() {
@@ -701,10 +782,18 @@ async function bootstrap() {
   ui.colorPreset.addEventListener("change", async () => {
     await loadPreset(ui.colorPreset.value, ui.colorYaml);
     applyColorConfig(parseYamlText(ui.colorYaml.value, "Color YAML"));
+    state.dirty.lastColorEdit = null;
   });
   ui.soundPreset.addEventListener("change", async () => {
     await loadPreset(ui.soundPreset.value, ui.soundYaml);
     applySoundConfig(parseYamlText(ui.soundYaml.value, "Sound YAML"));
+    state.dirty.lastSoundEdit = null;
+  });
+  ui.colorYaml.addEventListener("input", () => {
+    state.dirty.lastColorEdit = "yaml";
+  });
+  ui.soundYaml.addEventListener("input", () => {
+    state.dirty.lastSoundEdit = "yaml";
   });
   ui.micSensitivity.addEventListener("input", () => {
     state.visual.micSensitivity = Number(ui.micSensitivity.value);
@@ -715,24 +804,30 @@ async function bootstrap() {
     updateLiveControlLabels();
   });
   ui.voiceFloorColor.addEventListener("input", () => {
-    state.visual.voiceFloorColor = ui.voiceFloorColor.value;
-    updateLiveControlLabels();
+    state.dirty.lastColorEdit = "controls";
+    applyVoiceControlsToState();
     if (!state.running) drawSilence();
   });
   ui.voiceCeilingColor.addEventListener("input", () => {
-    state.visual.voiceCeilingColor = ui.voiceCeilingColor.value;
-    updateLiveControlLabels();
+    state.dirty.lastColorEdit = "controls";
+    applyVoiceControlsToState();
+    if (!state.running) drawSilence();
+  });
+  ui.voiceFloorHz.addEventListener("change", () => {
+    state.dirty.lastColorEdit = "controls";
+    applyVoiceControlsToState();
     if (!state.running) drawSilence();
   });
   ui.voiceFloorHz.addEventListener("input", () => {
-    state.visual.voiceFloorHz = clamp(Number(ui.voiceFloorHz.value), 20, state.visual.voiceCeilingHz - 20);
-    updateLiveControlLabels();
+    state.dirty.lastColorEdit = "controls";
+  });
+  ui.voiceCeilingHz.addEventListener("change", () => {
+    state.dirty.lastColorEdit = "controls";
+    applyVoiceControlsToState();
     if (!state.running) drawSilence();
   });
   ui.voiceCeilingHz.addEventListener("input", () => {
-    state.visual.voiceCeilingHz = clamp(Number(ui.voiceCeilingHz.value), state.visual.voiceFloorHz + 20, 22000);
-    updateLiveControlLabels();
-    if (!state.running) drawSilence();
+    state.dirty.lastColorEdit = "controls";
   });
   ui.toggleBlend.addEventListener("change", () => {
     state.visual.blend = ui.toggleBlend.checked;
