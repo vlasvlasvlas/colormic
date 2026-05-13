@@ -60,6 +60,8 @@ const state = {
     blend: true,
     bloom: true,
     waveform: true,
+    freqLine: true,
+    trail: 0.65,
   },
   dirty: {
     lastColorEdit: null,
@@ -101,6 +103,9 @@ const ui = {
   mFreq: document.getElementById("mFreq"),
   mNote: document.getElementById("mNote"),
   mVol: document.getElementById("mVol"),
+  visualTrail: document.getElementById("visualTrail"),
+  visualTrailValue: document.getElementById("visualTrailValue"),
+  toggleFreqLine: document.getElementById("toggleFreqLine"),
   cInterpolation: document.getElementById("cInterpolation"),
   cEnergyBrightness: document.getElementById("cEnergyBrightness"),
   cEnergyBrightnessValue: document.getElementById("cEnergyBrightnessValue"),
@@ -736,7 +741,9 @@ function drawVisual(freqData, timeData) {
   const colorDriver = voiceColorDriver(centroidNorm);
 
   // Clear with a very fast fade (not full black) to leave a crisp trail
-  const trailAlpha = clamp(0.55 + energy * 0.35, 0.55, 0.92);
+  // state.visual.trail goes from 0 (no trail, alpha 1.0) to 1 (max trail, alpha ~0.05)
+  const baseAlpha = 1.0 - state.visual.trail * 0.96;
+  const trailAlpha = clamp(baseAlpha + energy * 0.15, 0.04, 1.0);
   ctx.save();
   ctx.globalAlpha = trailAlpha;
   ctx.fillStyle = getBackgroundColor();
@@ -760,7 +767,7 @@ function drawVisual(freqData, timeData) {
   if (state.visual.bloom) drawSpectrumBars(freqData, energy, colorDriver);
 
   // Dominant frequency line
-  drawFreqLine(energy, colorDriver);
+  if (state.visual.freqLine) drawFreqLine(energy, colorDriver);
 
   // Crisp waveform
   if (state.visual.waveform) drawSharpWave(timeData, energy, colorDriver);
@@ -966,6 +973,10 @@ async function bootstrap() {
   // Visual controls
   ui.micSensitivity.addEventListener("input", () => { state.visual.micSensitivity = +ui.micSensitivity.value; updateLiveControlLabels(); });
   ui.visualIntensity.addEventListener("input", () => { state.visual.intensity = +ui.visualIntensity.value; updateLiveControlLabels(); });
+  ui.visualTrail.addEventListener("input", () => { 
+    state.visual.trail = +ui.visualTrail.value; 
+    ui.visualTrailValue.textContent = state.visual.trail.toFixed(2);
+  });
   ui.masterVolume.addEventListener("input", () => {
     state.visual.masterVolume = +ui.masterVolume.value;
     updateLiveControlLabels();
@@ -983,6 +994,7 @@ async function bootstrap() {
   ui.toggleBlend.addEventListener("change", () => { state.visual.blend = ui.toggleBlend.checked; if (!state.running) drawSilence(); });
   ui.toggleBloom.addEventListener("change", () => { state.visual.bloom = ui.toggleBloom.checked; if (!state.running) drawSilence(); });
   ui.toggleWaveform.addEventListener("change", () => { state.visual.waveform = ui.toggleWaveform.checked; if (!state.running) drawSilence(); });
+  ui.toggleFreqLine.addEventListener("change", () => { state.visual.freqLine = ui.toggleFreqLine.checked; if (!state.running) drawSilence(); });
 
   // Sound controls — real-time apply when running
   function onSoundControl() {

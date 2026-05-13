@@ -113,6 +113,13 @@
       <input id="visualIntensity" type="range" min="0" max="2" step="0.05" value="1.2" />
 
       <div class="range-row">
+        <label for="visualTrail">Fantasma (Trail)</label>
+        <output id="visualTrailValue">0.65</output>
+      </div>
+      <input id="visualTrail" type="range" min="0" max="1" step="0.01" value="0.65" />
+
+
+      <div class="range-row">
         <label for="masterVolume">Volumen principal</label>
         <output id="masterVolumeValue">80%</output>
       </div>
@@ -128,9 +135,13 @@
           <input id="toggleBloom" type="checkbox" checked />
           <span>Barras EQ</span>
         </label>
-        <label class="toggle-line" style="grid-column:1/-1">
+        <label class="toggle-line">
           <input id="toggleWaveform" type="checkbox" checked />
           <span>Onda</span>
+        </label>
+        <label class="toggle-line">
+          <input id="toggleFreqLine" type="checkbox" checked />
+          <span>Línea Freq</span>
         </label>
       </div>
     </div>
