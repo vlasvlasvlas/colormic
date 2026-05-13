@@ -2,7 +2,7 @@
 
 ColorMic es un instrumento web para performance audiovisual con micrófono. La voz entra por Web Audio, se analiza en vivo y controla métricas visuales reactivas (flash, barras EQ, formas de onda). 
 
-Incluye efectos de síntesis en tiempo real: Filtro, Compresor, Reverb, Delay rítmico (con Tap Tempo), LFO, y Ring Modulator (efecto robótico/Daft Punk).
+Incluye efectos de síntesis en tiempo real: Filtro, Compresor, Reverb, Delay rítmico (con Tap Tempo), LFO, y Ring Modulator (efecto robótico).
 
 Sitio publicado:
 
@@ -14,7 +14,7 @@ https://vlasvlasvlas.github.io/colormic/
 - Pensada para GitHub Pages.
 - Interfaz renovada con panel lateral lleno de controles visuales (sliders, toggles, color pickers) para todos los parámetros de Sonido y Color.
 - Parámetros avanzados en formato YAML disponibles bajo secciones colapsables (`<details>`).
-- Efectos de síntesis extra: Ring Modulator para efecto "Daft Punk", y Tap Tempo con selector de subdivisión para el Delay.
+- Efectos de síntesis extra: Ring Modulator (efecto robótico), y Tap Tempo con selector de subdivisión para el Delay.
 - Motor visual nítido y rápido: fondo "flash" directo, EQ bars, línea de frecuencia y forma de onda HD.
 
 ## Uso
