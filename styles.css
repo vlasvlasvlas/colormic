@@ -40,7 +40,7 @@ body.theme-white {
   position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   display: block;
   background: var(--bg);
 }
@@ -152,7 +152,7 @@ body.theme-white .primary-button.is-running {
   left: 0;
   z-index: 30;
   width: min(400px, calc(100vw - 28px));
-  height: 100vh;
+  height: 100dvh;
   padding: 18px;
   overflow-y: auto;
   transform: translateX(calc(-100% - 18px));
