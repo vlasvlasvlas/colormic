@@ -225,7 +225,9 @@ label {
 
 select,
 textarea,
-input[type="range"] {
+input[type="range"],
+input[type="color"],
+input[type="number"] {
   width: 100%;
 }
 
@@ -309,6 +311,59 @@ textarea {
 
 input[type="range"] {
   accent-color: var(--accent);
+}
+
+.voice-ramp {
+  display: grid;
+  gap: 9px;
+}
+
+.voice-range-preview {
+  height: 20px;
+  border: 1px solid var(--panel-border);
+  background: linear-gradient(90deg, #2447ff, #ffcf4a);
+}
+
+.color-pickers,
+.frequency-pickers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.color-picker-line,
+.number-line {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  color: var(--ink);
+  background: rgba(127, 127, 127, 0.08);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+}
+
+.color-picker-line span,
+.number-line span {
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+input[type="color"] {
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="number"] {
+  height: 34px;
+  padding: 0 8px;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--panel-border);
+  font-family: Menlo, Monaco, Consolas, monospace;
 }
 
 .toggle-stack {

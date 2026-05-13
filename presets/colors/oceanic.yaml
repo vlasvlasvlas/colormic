@@ -1,15 +1,24 @@
+# Nombre visible del preset.
 name: Oceanic Flux
-background: "#03111f"
-palette:
-  - "#001f3f"
-  - "#0074D9"
-  - "#7FDBFF"
-  - "#39CCCC"
-  - "#2ECC40"
-  - "#FFDC00"
-  - "#FF851B"
-  - "#FF4136"
+
+# Como se mezcla el color piso con el color techo.
+# Opciones: lab, rgb, hsl, hsv, hcl.
+# lab suele ser el mas suave/perceptual; rgb es mas directo.
 interpolation: lab
+
+# Rango que convierte frecuencia vocal en color.
+# floor_hz = piso/grave; ceiling_hz = techo/agudo.
+# Para voz + formantes conviene algo amplio como 60-4000.
+# Para pitch fundamental solamente, probar 70-900.
+voice_range:
+  floor_hz: 60
+  ceiling_hz: 4000
+  floor_color: "#2447ff"
+  ceiling_color: "#ffcf4a"
+
+# Respuesta visual.
+# energy_to_brightness: cuanto sube brillo/saturacion con volumen. Rango util: 0.0-1.4.
+# centroid_to_hue_shift: fallback cuando no hay pitch estable. Rango util: 0.0-1.0.
 reactivity:
   energy_to_brightness: 0.65
   centroid_to_hue_shift: 0.4

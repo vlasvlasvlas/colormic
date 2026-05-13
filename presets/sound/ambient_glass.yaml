@@ -1,28 +1,46 @@
+# Nombre visible del preset.
 name: Ambient Glass
+
+# Ganancias. Rango util: 0.0-2.0.
 input_gain: 1.0
 master_gain: 0.8
+
 filter:
+  # Opciones: lowpass, highpass, bandpass, lowshelf, highshelf, peaking, notch, allpass.
   type: lowpass
+  # Frecuencia central/corte en Hz. Rango util: 40-18000.
   frequency: 6800
+  # Resonancia/ancho del filtro. Rango util: 0.001-30.
   q: 0.7
+
 compressor:
+  # threshold en dB. Mas bajo = comprime antes.
   threshold: -28
   knee: 24
   ratio: 4
   attack: 0.008
   release: 0.25
+
 reverb:
+  # seconds = duracion del impulso; decay = cola; pre_delay_ms = espera inicial; mix = cantidad wet.
   seconds: 2.8
   decay: 2.5
   pre_delay_ms: 35
   mix: 0.45
+
 delay:
+  # time_s = tiempo de delay; feedback = repeticiones; mix = cantidad wet.
   time_s: 0.38
   feedback: 0.35
   mix: 0.28
+
 lfo:
   enabled: true
+  # Opciones: filter.frequency, master_gain.
   target: filter.frequency
+  # Opciones: sine, square, sawtooth, triangle.
   waveform: sine
   frequency_hz: 0.17
+  # Si target es filter.frequency, amount esta en Hz.
+  # Si target es master_gain, amount esta en ganancia.
   amount: 1800

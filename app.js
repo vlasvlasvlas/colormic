@@ -3,6 +3,8 @@ const colorPresetList = [
   "presets/colors/magma.yaml",
 ];
 
+const ASSET_VERSION = "20260512-6";
+
 const soundPresetList = [
   "presets/sound/ambient_glass.yaml",
   "presets/sound/ritual_echo.yaml",
@@ -39,11 +41,17 @@ const state = {
     pitch: 0,
     pitchConfidence: 0,
     pitchNorm: 0,
+    voiceFrequency: 0,
+    voiceNorm: 0,
     flux: 0,
   },
   visual: {
     micSensitivity: 2,
     intensity: 1.2,
+    voiceFloorHz: 60,
+    voiceCeilingHz: 4000,
+    voiceFloorColor: "#2447ff",
+    voiceCeilingColor: "#ffcf4a",
     blend: true,
     bloom: true,
     waveform: true,
@@ -69,6 +77,12 @@ const ui = {
   micSensitivityValue: document.getElementById("micSensitivityValue"),
   visualIntensity: document.getElementById("visualIntensity"),
   visualIntensityValue: document.getElementById("visualIntensityValue"),
+  voiceFloorHz: document.getElementById("voiceFloorHz"),
+  voiceCeilingHz: document.getElementById("voiceCeilingHz"),
+  voiceRangeValue: document.getElementById("voiceRangeValue"),
+  voiceFloorColor: document.getElementById("voiceFloorColor"),
+  voiceCeilingColor: document.getElementById("voiceCeilingColor"),
+  voiceRangePreview: document.getElementById("voiceRangePreview"),
   toggleBlend: document.getElementById("toggleBlend"),
   toggleBloom: document.getElementById("toggleBloom"),
   toggleWaveform: document.getElementById("toggleWaveform"),
@@ -115,7 +129,8 @@ function fillPresetSelect(select, paths) {
 }
 
 async function fetchText(path) {
-  const response = await fetch(path);
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(`${path}${separator}v=${ASSET_VERSION}`);
   if (!response.ok) throw new Error(`No se pudo cargar ${path}`);
   return response.text();
 }
@@ -142,30 +157,23 @@ function setBackgroundMode(mode) {
 }
 
 function updateLiveControlLabels() {
+  const floorHz = Math.round(state.visual.voiceFloorHz);
+  const ceilingHz = Math.round(state.visual.voiceCeilingHz);
   ui.micSensitivityValue.textContent = `${state.visual.micSensitivity.toFixed(2)}x`;
   ui.visualIntensityValue.textContent = state.visual.intensity.toFixed(2);
+  ui.voiceRangeValue.textContent = `${floorHz}-${ceilingHz} Hz`;
+  ui.voiceRangePreview.style.background = `linear-gradient(90deg, ${state.visual.voiceFloorColor}, ${state.visual.voiceCeilingColor})`;
+  ui.voiceFloorHz.value = String(floorHz);
+  ui.voiceCeilingHz.value = String(ceilingHz);
+  ui.voiceFloorColor.value = state.visual.voiceFloorColor;
+  ui.voiceCeilingColor.value = state.visual.voiceCeilingColor;
 }
 
-function colorAt(t) {
-  const cfg = state.color;
-  const palette = cfg.palette;
-  const normalizedT = ((t % 1) + 1) % 1;
-  const scaled = normalizedT * (palette.length - 1);
-  const i = Math.floor(scaled);
-  const localT = scaled - i;
-  return chroma.interpolate(
-    palette[clamp(i, 0, palette.length - 1)],
-    palette[clamp(i + 1, 0, palette.length - 1)],
-    localT,
-    cfg.interpolation
-  );
-}
-
-function normalizePitch(pitch) {
-  if (!pitch) return 0;
-  const minPitch = 75;
-  const maxPitch = 850;
-  return clamp(Math.log2(pitch / minPitch) / Math.log2(maxPitch / minPitch), 0, 1);
+function normalizeVoiceFrequency(frequency) {
+  if (!frequency) return 0;
+  const minHz = Math.max(20, Number(state.visual.voiceFloorHz) || 60);
+  const maxHz = Math.max(minHz + 20, Number(state.visual.voiceCeilingHz) || 4000);
+  return clamp(Math.log2(frequency / minHz) / Math.log2(maxHz / minHz), 0, 1);
 }
 
 function estimatePitch(timeData, sampleRate, rms) {
@@ -204,17 +212,20 @@ function estimatePitch(timeData, sampleRate, rms) {
 }
 
 function voiceColorDriver(centroidNorm) {
-  const pitchWeight = clamp(state.audioMetrics.pitchConfidence, 0, 1);
-  return (
-    state.audioMetrics.pitchNorm * pitchWeight +
-    centroidNorm * (1 - pitchWeight)
-  ) % 1;
+  return clamp(state.audioMetrics.voiceNorm || centroidNorm, 0, 1);
 }
 
 function voiceColorAt(t, energy, pitchNorm) {
-  const hsl = colorAt(t).hsl();
+  const hsl = chroma
+    .interpolate(
+      state.visual.voiceFloorColor,
+      state.visual.voiceCeilingColor,
+      clamp(t, 0, 1),
+      state.color.interpolation || "lab"
+    )
+    .hsl();
   const hue = Number.isFinite(hsl[0]) ? hsl[0] : 0;
-  const saturation = clamp((hsl[1] || 0.7) + 0.16 + energy * 0.2, 0, 1);
+  const saturation = clamp((hsl[1] || 0.7) + energy * 0.18, 0, 1);
   const lightness = clamp(
     (hsl[2] || 0.45) +
       energy * state.color.reactivity.energyToBrightness * 0.46 +
@@ -235,13 +246,9 @@ function drawSilence() {
 }
 
 function applyColorConfig(cfg) {
-  if (!Array.isArray(cfg.palette) || cfg.palette.length < 2) {
-    throw new Error("Color YAML necesita palette con al menos 2 colores");
-  }
-
+  const voiceRange = cfg.voice_range || {};
   state.color = {
     name: cfg.name || "Color preset",
-    palette: cfg.palette,
     interpolation: ["rgb", "lab", "hsl", "hsv", "hcl"].includes(cfg.interpolation) ? cfg.interpolation : "lab",
     reactivity: {
       energyToBrightness: clamp(Number(cfg.reactivity?.energy_to_brightness ?? 0.7), 0, 1.4),
@@ -249,6 +256,16 @@ function applyColorConfig(cfg) {
     },
   };
 
+  state.visual.voiceFloorHz = clamp(Number(voiceRange.floor_hz ?? state.visual.voiceFloorHz), 20, 20000);
+  state.visual.voiceCeilingHz = clamp(
+    Number(voiceRange.ceiling_hz ?? state.visual.voiceCeilingHz),
+    state.visual.voiceFloorHz + 20,
+    22000
+  );
+  if (voiceRange.floor_color) state.visual.voiceFloorColor = voiceRange.floor_color;
+  if (voiceRange.ceiling_color) state.visual.voiceCeilingColor = voiceRange.ceiling_color;
+
+  updateLiveControlLabels();
   setStatus(`Color: ${state.color.name}`);
   drawSilence();
 }
@@ -466,15 +483,26 @@ function computeMetrics(freqData, timeData, sampleRate) {
 
   const rms = Math.sqrt(sumSq / timeData.length);
   const pitchEstimate = estimatePitch(timeData, sampleRate, rms);
-  const detectedPitchNorm = normalizePitch(pitchEstimate.pitch);
+  const detectedPitchNorm = normalizeVoiceFrequency(pitchEstimate.pitch);
+  const centroid = magSum > 0 ? weighted / magSum : 0;
+  const centroidInfluence = clamp(state.color.reactivity.centroidToHueShift, 0, 1);
+  const pitchMix = clamp(pitchEstimate.confidence * (0.85 - centroidInfluence * 0.45), 0, 0.85);
+  const voiceFrequency = pitchEstimate.pitch > 0
+    ? pitchEstimate.pitch * pitchMix + centroid * (1 - pitchMix)
+    : centroid;
+  const detectedVoiceNorm = normalizeVoiceFrequency(voiceFrequency);
 
   state.audioMetrics.rms = rms;
-  state.audioMetrics.centroid = magSum > 0 ? weighted / magSum : 0;
+  state.audioMetrics.centroid = centroid;
   state.audioMetrics.pitch = pitchEstimate.pitch;
   state.audioMetrics.pitchConfidence = pitchEstimate.confidence;
   state.audioMetrics.pitchNorm = pitchEstimate.confidence > 0
     ? state.audioMetrics.pitchNorm * 0.68 + detectedPitchNorm * 0.32
     : state.audioMetrics.pitchNorm * 0.96;
+  state.audioMetrics.voiceFrequency = voiceFrequency;
+  state.audioMetrics.voiceNorm = rms > 0.01
+    ? state.audioMetrics.voiceNorm * 0.68 + detectedVoiceNorm * 0.32
+    : state.audioMetrics.voiceNorm * 0.96;
   state.audioMetrics.flux = fluxAcc / (freqData.length * 255);
 }
 
@@ -522,9 +550,11 @@ function drawColorBlend(freqData, energy, centroidNorm, colorDriver) {
   }
 
   const wash = ctx.createLinearGradient(0, state.height, state.width, 0);
-  for (let i = 0; i < state.color.palette.length; i++) {
-    const t = (i / Math.max(1, state.color.palette.length - 1) + colorDriver * 0.65) % 1;
-    wash.addColorStop(i / Math.max(1, state.color.palette.length - 1), voiceColorAt(t, energy, colorDriver).hex());
+  const washStops = 5;
+  for (let i = 0; i < washStops; i++) {
+    const stop = i / (washStops - 1);
+    const t = stop * 0.65 + colorDriver * 0.35;
+    wash.addColorStop(stop, voiceColorAt(t, energy, colorDriver).hex());
   }
   ctx.globalAlpha = clamp((0.08 + energy * 0.42) * state.visual.intensity, 0, 0.58);
   ctx.fillStyle = wash;
@@ -567,9 +597,11 @@ function drawWave(timeData, energy, centroidNorm, colorDriver) {
   ctx.lineJoin = "round";
 
   const gradient = ctx.createLinearGradient(0, 0, state.width, 0);
-  for (let i = 0; i < state.color.palette.length; i++) {
-    const t = (colorDriver + i / Math.max(1, state.color.palette.length - 1)) % 1;
-    gradient.addColorStop(i / Math.max(1, state.color.palette.length - 1), voiceColorAt(t, energy, colorDriver).hex());
+  const waveStops = 5;
+  for (let i = 0; i < waveStops; i++) {
+    const stop = i / (waveStops - 1);
+    const t = stop * 0.7 + colorDriver * 0.3;
+    gradient.addColorStop(stop, voiceColorAt(t, energy, colorDriver).hex());
   }
 
   ctx.strokeStyle = gradient;
@@ -608,7 +640,7 @@ function drawVisual(freqData, timeData) {
 
 function updateMetricsUi() {
   ui.mRms.textContent = state.audioMetrics.rms.toFixed(3);
-  ui.mCentroid.textContent = `${Math.round(state.audioMetrics.centroid)} Hz`;
+  ui.mCentroid.textContent = `${Math.round(state.audioMetrics.voiceFrequency)} Hz`;
   ui.mPitch.textContent = state.audioMetrics.pitchConfidence > 0.05
     ? `${Math.round(state.audioMetrics.pitch)} Hz`
     : "0 Hz";
@@ -681,6 +713,26 @@ async function bootstrap() {
   ui.visualIntensity.addEventListener("input", () => {
     state.visual.intensity = Number(ui.visualIntensity.value);
     updateLiveControlLabels();
+  });
+  ui.voiceFloorColor.addEventListener("input", () => {
+    state.visual.voiceFloorColor = ui.voiceFloorColor.value;
+    updateLiveControlLabels();
+    if (!state.running) drawSilence();
+  });
+  ui.voiceCeilingColor.addEventListener("input", () => {
+    state.visual.voiceCeilingColor = ui.voiceCeilingColor.value;
+    updateLiveControlLabels();
+    if (!state.running) drawSilence();
+  });
+  ui.voiceFloorHz.addEventListener("input", () => {
+    state.visual.voiceFloorHz = clamp(Number(ui.voiceFloorHz.value), 20, state.visual.voiceCeilingHz - 20);
+    updateLiveControlLabels();
+    if (!state.running) drawSilence();
+  });
+  ui.voiceCeilingHz.addEventListener("input", () => {
+    state.visual.voiceCeilingHz = clamp(Number(ui.voiceCeilingHz.value), state.visual.voiceFloorHz + 20, 22000);
+    updateLiveControlLabels();
+    if (!state.running) drawSilence();
   });
   ui.toggleBlend.addEventListener("change", () => {
     state.visual.blend = ui.toggleBlend.checked;

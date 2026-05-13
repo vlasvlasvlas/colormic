@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="ColorMic: visuales y sonido reactivo al microfono con presets YAML." />
   <title>ColorMic</title>
-  <link rel="stylesheet" href="styles.css?v=20260512-4" />
+  <link rel="stylesheet" href="styles.css?v=20260512-6" />
   <script src="js-yaml.min.js"></script>
   <script src="chroma.js"></script>
-  <script src="app.js?v=20260512-4" defer></script>
+  <script src="app.js?v=20260512-6" defer></script>
 </head>
 <body class="theme-black">
   <canvas id="stage" aria-label="ColorMic performance canvas"></canvas>
@@ -52,7 +52,7 @@
         <strong id="mRms">0.000</strong>
       </div>
       <div>
-        <span>Centroid</span>
+        <span>Voice Hz</span>
         <strong id="mCentroid">0 Hz</strong>
       </div>
       <div>
@@ -66,6 +66,34 @@
     </div>
 
     <div class="live-controls" aria-label="Controles visuales">
+      <div class="voice-ramp">
+        <div class="range-row">
+          <label>Rango color voz</label>
+          <output id="voiceRangeValue">60-4000 Hz</output>
+        </div>
+        <div id="voiceRangePreview" class="voice-range-preview"></div>
+        <div class="frequency-pickers">
+          <label class="number-line" for="voiceFloorHz">
+            <span>Piso Hz</span>
+            <input id="voiceFloorHz" type="number" min="20" max="20000" step="10" value="60" />
+          </label>
+          <label class="number-line" for="voiceCeilingHz">
+            <span>Techo Hz</span>
+            <input id="voiceCeilingHz" type="number" min="20" max="20000" step="10" value="4000" />
+          </label>
+        </div>
+        <div class="color-pickers">
+          <label class="color-picker-line" for="voiceFloorColor">
+            <span>Piso voz</span>
+            <input id="voiceFloorColor" type="color" value="#2447ff" />
+          </label>
+          <label class="color-picker-line" for="voiceCeilingColor">
+            <span>Techo voz</span>
+            <input id="voiceCeilingColor" type="color" value="#ffcf4a" />
+          </label>
+        </div>
+      </div>
+
       <div class="range-row">
         <label for="micSensitivity">Mic sensitivity</label>
         <output id="micSensitivityValue" for="micSensitivity">2.00x</output>

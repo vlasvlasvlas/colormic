@@ -33,6 +33,9 @@ El microfono funciona en `localhost` o en HTTPS. Por eso GitHub Pages funciona, 
 - `?`: abre informacion y link al repo.
 - `Mic sensitivity`: escala la respuesta visual al volumen del microfono.
 - `Color intensity`: sube o baja la presencia del color.
+- `Piso Hz` / `Techo Hz`: rango de frecuencias que se mapea al degrade vocal.
+- `Piso voz`: color usado para frecuencias graves de la voz.
+- `Techo voz`: color usado para frecuencias agudas de la voz.
 - `Color blend`: prende/apaga el campo principal de color.
 - `Bloom`: prende/apaga halos de color.
 - `Waveform`: prende/apaga la forma de onda.
@@ -41,10 +44,10 @@ El microfono funciona en `localhost` o en HTTPS. Por eso GitHub Pages funciona, 
 
 - `RMS`: energia/volumen de la senal.
 - `Pitch`: frecuencia fundamental estimada de la voz.
-- `Centroid`: brillo espectral general.
+- `Voice Hz`: frecuencia usada para la rampa de color. Combina pitch tonal y energia espectral de la voz.
 - `Flux`: cambio espectral entre frames.
 
-El color principal usa `Pitch` cuando hay una voz tonal clara. Si no hay pitch estable, usa `Centroid` como fallback. La energia (`RMS`) aumenta luz, saturacion y tamano de los gradientes.
+El color principal usa `Voice Hz`, una frecuencia vocal calculada desde pitch tonal y energia espectral. La rampa va de `Piso voz` a `Techo voz` dentro del rango configurable `Piso Hz` / `Techo Hz`. El default es `60-4000 Hz`: grave se acerca al color piso, agudo se acerca al color techo. La energia (`RMS`) aumenta luz, saturacion y tamano de los gradientes.
 
 ## Presets
 
@@ -64,17 +67,16 @@ Ejemplo de color:
 
 ```yaml
 name: Oceanic Flux
-background: "#03111f"
-palette:
-  - "#001f3f"
-  - "#0074D9"
-  - "#7FDBFF"
-  - "#39CCCC"
-  - "#2ECC40"
-  - "#FFDC00"
-  - "#FF851B"
-  - "#FF4136"
+
+# Opciones: lab, rgb, hsl, hsv, hcl.
 interpolation: lab
+
+voice_range:
+  floor_hz: 60
+  ceiling_hz: 4000
+  floor_color: "#2447ff"
+  ceiling_color: "#ffcf4a"
+
 reactivity:
   energy_to_brightness: 0.65
   centroid_to_hue_shift: 0.4
@@ -87,6 +89,7 @@ name: Ambient Glass
 input_gain: 1.0
 master_gain: 0.8
 filter:
+  # Opciones: lowpass, highpass, bandpass, lowshelf, highshelf, peaking, notch, allpass.
   type: lowpass
   frequency: 6800
   q: 0.7
@@ -101,7 +104,9 @@ delay:
   mix: 0.28
 lfo:
   enabled: true
+  # Opciones target: filter.frequency, master_gain.
   target: filter.frequency
+  # Opciones waveform: sine, square, sawtooth, triangle.
   waveform: sine
   frequency_hz: 0.17
   amount: 1800

@@ -1,12 +1,21 @@
+# Nombre visible del preset.
 name: Magma Bloom
-background: "#180404"
-palette:
-  - "#13040a"
-  - "#5e0b15"
-  - "#a44200"
-  - "#f3a712"
-  - "#ffe8a3"
-interpolation: rgb
+
+# Como se mezcla el color piso con el color techo.
+# Opciones: lab, rgb, hsl, hsv, hcl.
+interpolation: lab
+
+# Rango que convierte frecuencia vocal en color.
+# floor_hz = piso/grave; ceiling_hz = techo/agudo.
+voice_range:
+  floor_hz: 60
+  ceiling_hz: 4000
+  floor_color: "#4d0505"
+  ceiling_color: "#ffe8a3"
+
+# Respuesta visual.
+# energy_to_brightness: cuanto sube brillo/saturacion con volumen. Rango util: 0.0-1.4.
+# centroid_to_hue_shift: fallback cuando no hay pitch estable. Rango util: 0.0-1.0.
 reactivity:
   energy_to_brightness: 0.8
   centroid_to_hue_shift: 0.2

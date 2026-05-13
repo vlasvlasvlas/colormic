@@ -1,28 +1,46 @@
+# Nombre visible del preset.
 name: Ritual Echo
+
+# Ganancias. Rango util: 0.0-2.0.
 input_gain: 1.1
 master_gain: 0.85
+
 filter:
+  # Opciones: lowpass, highpass, bandpass, lowshelf, highshelf, peaking, notch, allpass.
   type: bandpass
+  # Frecuencia central/corte en Hz. Rango util: 40-18000.
   frequency: 1800
+  # Resonancia/ancho del filtro. Rango util: 0.001-30.
   q: 1.8
+
 compressor:
+  # threshold en dB. Mas bajo = comprime antes.
   threshold: -22
   knee: 18
   ratio: 3.2
   attack: 0.01
   release: 0.32
+
 reverb:
+  # seconds = duracion del impulso; decay = cola; pre_delay_ms = espera inicial; mix = cantidad wet.
   seconds: 4.5
   decay: 3.2
   pre_delay_ms: 70
   mix: 0.55
+
 delay:
+  # time_s = tiempo de delay; feedback = repeticiones; mix = cantidad wet.
   time_s: 0.52
   feedback: 0.48
   mix: 0.38
+
 lfo:
   enabled: true
+  # Opciones: filter.frequency, master_gain.
   target: master_gain
+  # Opciones: sine, square, sawtooth, triangle.
   waveform: triangle
   frequency_hz: 0.09
+  # Si target es filter.frequency, amount esta en Hz.
+  # Si target es master_gain, amount esta en ganancia.
   amount: 0.18
