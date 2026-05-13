@@ -3,27 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="ColorMic: visuales y sonido reactivo al microfono con presets YAML." />
+  <meta name="description" content="ColorMic: visuales y sonido reactivo al micrófono con presets YAML." />
   <title>ColorMic</title>
-  <link rel="stylesheet" href="styles.css?v=20260513-2" />
-  <script src="js-yaml.min.js"></script>
-  <script src="chroma.js"></script>
-  <script src="app.js?v=20260513-2" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20260513-3" />
+  <script src="js/js-yaml.min.js"></script>
+  <script src="js/chroma.js"></script>
+  <script src="app.js?v=20260513-3" defer></script>
 </head>
 <body class="theme-black">
   <canvas id="stage" aria-label="ColorMic performance canvas"></canvas>
 
   <header class="surface-bar" aria-label="Controles principales">
-    <button id="settingsToggle" class="icon-button" type="button" aria-label="Abrir configuracion" data-tip="Configuracion">
-      &#9776;
-    </button>
+    <button id="settingsToggle" class="icon-button" type="button" aria-label="Abrir configuracion" data-tip="Configuracion">&#9776;</button>
     <button id="startMic" class="primary-button" type="button">MIC</button>
-    <button id="backgroundToggle" class="icon-button wide" type="button" aria-label="Cambiar fondo" data-tip="Fondo negro/blanco">
-      B/W
-    </button>
-    <button id="helpToggle" class="icon-button" type="button" aria-label="Ayuda" data-tip="Ayuda">
-      ?
-    </button>
+    <button id="backgroundToggle" class="icon-button wide" type="button" aria-label="Cambiar fondo" data-tip="Fondo negro/blanco">B/W</button>
+    <button id="helpToggle" class="icon-button" type="button" aria-label="Ayuda" data-tip="Ayuda">?</button>
   </header>
 
   <aside id="sidebar" class="sidebar" aria-label="Configuracion">
@@ -32,7 +26,7 @@
         <p class="eyebrow">ColorMic</p>
         <h1>Control</h1>
       </div>
-      <button id="closeSidebar" class="ghost-button" type="button" aria-label="Cerrar configuracion">&times;</button>
+      <button id="closeSidebar" class="ghost-button" type="button" aria-label="Cerrar">&times;</button>
     </div>
 
     <div class="control-grid">
@@ -40,32 +34,25 @@
       <button id="applyAll" class="quiet-button" type="button">Apply</button>
     </div>
 
-    <label for="colorPreset">Color preset</label>
-    <select id="colorPreset"></select>
-
-    <label for="soundPreset">Sound preset</label>
-    <select id="soundPreset"></select>
-
+    <!-- Métricas -->
     <div class="metrics">
-      <div>
-        <span>Frecuencia</span>
-        <strong id="mFreq">0 Hz</strong>
-      </div>
-      <div>
-        <span>Nota</span>
-        <strong id="mNote">&mdash;</strong>
-      </div>
-      <div>
-        <span>Volumen</span>
-        <strong id="mVol">0%</strong>
-      </div>
+      <div><span>Frecuencia</span><strong id="mFreq">0 Hz</strong></div>
+      <div><span>Nota</span><strong id="mNote">&mdash;</strong></div>
+      <div><span>Volumen</span><strong id="mVol">0%</strong></div>
     </div>
 
-    <div class="live-controls" aria-label="Controles visuales">
+    <!-- ═══ VISUAL ══════════════════════════════════════════════════════ -->
+    <p class="section-title">Visual</p>
+
+    <label for="colorPreset">Preset color</label>
+    <select id="colorPreset"></select>
+
+    <div class="live-controls">
+      <!-- Rango de color por voz -->
       <div class="voice-ramp">
         <div class="range-row">
           <label>Rango color voz</label>
-          <output id="voiceRangeValue">60-4000 Hz</output>
+          <output id="voiceRangeValue">60–4000 Hz</output>
         </div>
         <div id="voiceRangePreview" class="voice-range-preview"></div>
         <div class="frequency-pickers">
@@ -80,34 +67,58 @@
         </div>
         <div class="color-pickers">
           <label class="color-picker-line" for="voiceFloorColor">
-            <span>Piso voz</span>
+            <span>Piso</span>
             <input id="voiceFloorColor" type="color" value="#2447ff" />
           </label>
           <label class="color-picker-line" for="voiceCeilingColor">
-            <span>Techo voz</span>
+            <span>Techo</span>
             <input id="voiceCeilingColor" type="color" value="#ffcf4a" />
           </label>
         </div>
       </div>
 
+      <!-- Reactivity -->
+      <label for="cInterpolation">Interpolación de color</label>
+      <select id="cInterpolation">
+        <option value="lab">LAB (recomendado)</option>
+        <option value="rgb">RGB</option>
+        <option value="hsl">HSL</option>
+        <option value="hsv">HSV</option>
+        <option value="hcl">HCL</option>
+      </select>
+
       <div class="range-row">
-        <label for="micSensitivity">Mic sensitivity</label>
-        <output id="micSensitivityValue" for="micSensitivity">2.00x</output>
+        <label for="cEnergyBrightness">Brillo por energía</label>
+        <output id="cEnergyBrightnessValue">0.70</output>
+      </div>
+      <input id="cEnergyBrightness" type="range" min="0" max="1.4" step="0.05" value="0.7" />
+
+      <div class="range-row">
+        <label for="cCentroidHue">Hue por centroide</label>
+        <output id="cCentroidHueValue">0.30</output>
+      </div>
+      <input id="cCentroidHue" type="range" min="0" max="1" step="0.05" value="0.3" />
+
+      <!-- Sensibilidad e intensidad -->
+      <div class="range-row">
+        <label for="micSensitivity">Sensibilidad mic</label>
+        <output id="micSensitivityValue">2.00x</output>
       </div>
       <input id="micSensitivity" type="range" min="0.2" max="5" step="0.05" value="2" />
 
       <div class="range-row">
-        <label for="visualIntensity">Color intensity</label>
-        <output id="visualIntensityValue" for="visualIntensity">1.20</output>
+        <label for="visualIntensity">Intensidad color</label>
+        <output id="visualIntensityValue">1.20</output>
       </div>
       <input id="visualIntensity" type="range" min="0" max="2" step="0.05" value="1.2" />
 
       <div class="range-row">
         <label for="masterVolume">Volumen principal</label>
-        <output id="masterVolumeValue" for="masterVolume">80%</output>
+        <output id="masterVolumeValue">80%</output>
       </div>
       <input id="masterVolume" type="range" min="0" max="1" step="0.01" value="0.8" />
 
+      <!-- Toggles visuales -->
       <div class="toggle-stack">
         <label class="toggle-line">
           <input id="toggleBlend" type="checkbox" checked />
@@ -117,18 +128,151 @@
           <input id="toggleBloom" type="checkbox" checked />
           <span>Barras EQ</span>
         </label>
-        <label class="toggle-line">
+        <label class="toggle-line" style="grid-column:1/-1">
           <input id="toggleWaveform" type="checkbox" checked />
           <span>Onda</span>
         </label>
       </div>
     </div>
 
-    <label for="colorYaml">Color YAML</label>
-    <textarea id="colorYaml" spellcheck="false"></textarea>
+    <details class="yaml-advanced" id="colorYamlDetails">
+      <summary>YAML avanzado — color</summary>
+      <label for="colorYaml">Color YAML</label>
+      <textarea id="colorYaml" spellcheck="false"></textarea>
+    </details>
 
-    <label for="soundYaml">Sound YAML</label>
-    <textarea id="soundYaml" spellcheck="false"></textarea>
+    <!-- ═══ SONIDO ═══════════════════════════════════════════════════════ -->
+    <p class="section-title">Sonido</p>
+
+    <label for="soundPreset">Preset sonido</label>
+    <select id="soundPreset"></select>
+
+    <div class="live-controls">
+
+      <div class="range-row">
+        <label for="sInputGain">Ganancia entrada</label>
+        <output id="sInputGainValue">1.00</output>
+      </div>
+      <input id="sInputGain" type="range" min="0" max="2" step="0.05" value="1.0" />
+
+      <p class="param-group-title">Filtro</p>
+      <label for="sFilterType">Tipo de filtro</label>
+      <select id="sFilterType">
+        <option value="lowpass">Low-pass</option>
+        <option value="highpass">High-pass</option>
+        <option value="bandpass">Band-pass</option>
+        <option value="notch">Notch</option>
+        <option value="allpass">All-pass</option>
+        <option value="lowshelf">Low shelf</option>
+        <option value="highshelf">High shelf</option>
+        <option value="peaking">Peaking</option>
+      </select>
+
+      <div class="two-col">
+        <div>
+          <div class="range-row"><label for="sFilterFreq">Frecuencia</label><output id="sFilterFreqValue">6800 Hz</output></div>
+          <input id="sFilterFreq" type="range" min="40" max="18000" step="10" value="6800" />
+        </div>
+        <div>
+          <div class="range-row"><label for="sFilterQ">Resonancia Q</label><output id="sFilterQValue">0.7</output></div>
+          <input id="sFilterQ" type="range" min="0.1" max="15" step="0.1" value="0.7" />
+        </div>
+      </div>
+
+      <p class="param-group-title">Reverb</p>
+      <div class="two-col">
+        <div>
+          <div class="range-row"><label for="sReverbMix">Mix</label><output id="sReverbMixValue">0.45</output></div>
+          <input id="sReverbMix" type="range" min="0" max="1" step="0.01" value="0.45" />
+        </div>
+        <div>
+          <div class="range-row"><label for="sReverbSeconds">Duración</label><output id="sReverbSecondsValue">2.8s</output></div>
+          <input id="sReverbSeconds" type="range" min="0.2" max="8" step="0.1" value="2.8" />
+        </div>
+      </div>
+
+      <p class="param-group-title">Delay</p>
+      <div class="two-col">
+        <div>
+          <div class="range-row"><label for="sDelayTime">Tiempo</label><output id="sDelayTimeValue">0.38s</output></div>
+          <input id="sDelayTime" type="range" min="0.01" max="1.5" step="0.01" value="0.38" />
+        </div>
+        <div>
+          <div class="range-row"><label for="sDelayFeedback">Feedback</label><output id="sDelayFeedbackValue">0.35</output></div>
+          <input id="sDelayFeedback" type="range" min="0" max="0.95" step="0.01" value="0.35" />
+        </div>
+      </div>
+      <div class="range-row">
+        <label for="sDelayMix">Mix delay</label>
+        <output id="sDelayMixValue">0.28</output>
+      </div>
+      <input id="sDelayMix" type="range" min="0" max="1" step="0.01" value="0.28" />
+
+      <!-- Tap tempo -->
+      <div class="tap-row">
+        <button id="tapBtn" class="quiet-button tap-button" type="button">TAP</button>
+        <select id="tapSubdiv">
+          <option value="1/1">1/1</option>
+          <option value="1/2">1/2</option>
+          <option value="1/4" selected>1/4</option>
+          <option value="1/8">1/8</option>
+          <option value="1/16">1/16</option>
+        </select>
+        <output id="tapBpmDisplay">&mdash;</output>
+      </div>
+
+      <p class="param-group-title">LFO</p>
+      <label class="toggle-line" style="margin:0">
+        <input id="sLfoEnabled" type="checkbox" checked />
+        <span>LFO activo</span>
+      </label>
+      <div class="two-col" style="margin-top:4px">
+        <div>
+          <label for="sLfoTarget">Target</label>
+          <select id="sLfoTarget">
+            <option value="filter.frequency">Filter freq</option>
+            <option value="master_gain">Master gain</option>
+          </select>
+        </div>
+        <div>
+          <label for="sLfoWaveform">Forma</label>
+          <select id="sLfoWaveform">
+            <option value="sine">Sine</option>
+            <option value="square">Square</option>
+            <option value="sawtooth">Sawtooth</option>
+            <option value="triangle">Triangle</option>
+          </select>
+        </div>
+      </div>
+      <div class="two-col">
+        <div>
+          <div class="range-row"><label for="sLfoFreq">Velocidad</label><output id="sLfoFreqValue">0.17 Hz</output></div>
+          <input id="sLfoFreq" type="range" min="0.01" max="20" step="0.01" value="0.17" />
+        </div>
+        <div>
+          <div class="range-row"><label for="sLfoAmount">Cantidad</label><output id="sLfoAmountValue">1800</output></div>
+          <input id="sLfoAmount" type="range" min="0" max="5000" step="10" value="1800" />
+        </div>
+      </div>
+
+      <p class="param-group-title">Fx Voz — Robot</p>
+      <label class="toggle-line" style="margin:0 0 4px">
+        <input id="sRingModEnabled" type="checkbox" />
+        <span>Ring Mod (Daft Punk)</span>
+      </label>
+      <div class="range-row">
+        <label for="sRingModFreq">Frecuencia portadora</label>
+        <output id="sRingModFreqValue">80 Hz</output>
+      </div>
+      <input id="sRingModFreq" type="range" min="40" max="800" step="1" value="80" />
+
+    </div>
+
+    <details class="yaml-advanced" id="soundYamlDetails">
+      <summary>YAML avanzado — sonido</summary>
+      <label for="soundYaml">Sound YAML</label>
+      <textarea id="soundYaml" spellcheck="false"></textarea>
+    </details>
 
     <p id="status" class="status">Ready</p>
   </aside>
@@ -139,10 +283,7 @@
     </form>
     <p class="eyebrow">About</p>
     <h2>ColorMic</h2>
-    <p>
-      Instrumento web para usar el microfono como fuente de color, gesto visual y procesamiento sonoro.
-      Los presets se editan como YAML para color, reverb, delay, filtros y LFO.
-    </p>
+    <p>Instrumento web reactivo al micrófono. Frecuencia → color. Voz → visuales. Controles de filtro, reverb, delay, LFO y ring modulator. YAML avanzado para power users.</p>
     <a href="https://github.com/vlasvlasvlas/colormic" target="_blank" rel="noreferrer">github.com/vlasvlasvlas/colormic</a>
   </dialog>
 </body>

@@ -26,6 +26,9 @@ const state = {
   delayFeedback: null,
   lfoOsc: null,
   lfoDepth: null,
+  ringModGain: null,
+  ringCarrierOsc: null,
+  ringCarrierDepth: null,
   running: false,
   animationId: null,
   color: null,
@@ -98,6 +101,41 @@ const ui = {
   mFreq: document.getElementById("mFreq"),
   mNote: document.getElementById("mNote"),
   mVol: document.getElementById("mVol"),
+  cInterpolation: document.getElementById("cInterpolation"),
+  cEnergyBrightness: document.getElementById("cEnergyBrightness"),
+  cEnergyBrightnessValue: document.getElementById("cEnergyBrightnessValue"),
+  cCentroidHue: document.getElementById("cCentroidHue"),
+  cCentroidHueValue: document.getElementById("cCentroidHueValue"),
+  sInputGain: document.getElementById("sInputGain"),
+  sInputGainValue: document.getElementById("sInputGainValue"),
+  sFilterType: document.getElementById("sFilterType"),
+  sFilterFreq: document.getElementById("sFilterFreq"),
+  sFilterFreqValue: document.getElementById("sFilterFreqValue"),
+  sFilterQ: document.getElementById("sFilterQ"),
+  sFilterQValue: document.getElementById("sFilterQValue"),
+  sReverbMix: document.getElementById("sReverbMix"),
+  sReverbMixValue: document.getElementById("sReverbMixValue"),
+  sReverbSeconds: document.getElementById("sReverbSeconds"),
+  sReverbSecondsValue: document.getElementById("sReverbSecondsValue"),
+  sDelayTime: document.getElementById("sDelayTime"),
+  sDelayTimeValue: document.getElementById("sDelayTimeValue"),
+  sDelayFeedback: document.getElementById("sDelayFeedback"),
+  sDelayFeedbackValue: document.getElementById("sDelayFeedbackValue"),
+  sDelayMix: document.getElementById("sDelayMix"),
+  sDelayMixValue: document.getElementById("sDelayMixValue"),
+  sLfoEnabled: document.getElementById("sLfoEnabled"),
+  sLfoTarget: document.getElementById("sLfoTarget"),
+  sLfoWaveform: document.getElementById("sLfoWaveform"),
+  sLfoFreq: document.getElementById("sLfoFreq"),
+  sLfoFreqValue: document.getElementById("sLfoFreqValue"),
+  sLfoAmount: document.getElementById("sLfoAmount"),
+  sLfoAmountValue: document.getElementById("sLfoAmountValue"),
+  sRingModEnabled: document.getElementById("sRingModEnabled"),
+  sRingModFreq: document.getElementById("sRingModFreq"),
+  sRingModFreqValue: document.getElementById("sRingModFreqValue"),
+  tapBtn: document.getElementById("tapBtn"),
+  tapSubdiv: document.getElementById("tapSubdiv"),
+  tapBpmDisplay: document.getElementById("tapBpmDisplay"),
 };
 
 const ctx = ui.stage.getContext("2d");
@@ -453,17 +491,22 @@ function applySoundConfig(cfg) {
 }
 
 async function applyEditors() {
-  let colorText = ui.colorYaml.value;
-  let colorConfig = parseYamlText(colorText, "Color YAML");
-
-  if (state.dirty.lastColorEdit === "controls") {
-    colorText = patchColorYamlFromControls(colorText);
-    ui.colorYaml.value = colorText;
-    colorConfig = mergeVoiceControlsIntoColorConfig(parseYamlText(colorText, "Color YAML"));
+  let colorCfg;
+  if (state.dirty.lastColorEdit === "yaml") {
+    colorCfg = parseYamlText(ui.colorYaml.value, "Color YAML");
+    populateColorControls(colorCfg);
+  } else {
+    colorCfg = readColorControls();
   }
-
-  applyColorConfig(colorConfig);
-  applySoundConfig(parseYamlText(ui.soundYaml.value, "Sound YAML"));
+  let soundCfg;
+  if (state.dirty.lastSoundEdit === "yaml") {
+    soundCfg = parseYamlText(ui.soundYaml.value, "Sound YAML");
+    populateSoundControls(soundCfg);
+  } else {
+    soundCfg = readSoundControls();
+  }
+  applyColorConfig(colorCfg);
+  applySoundConfig(soundCfg);
   state.dirty.lastColorEdit = null;
   state.dirty.lastSoundEdit = null;
 }
@@ -500,9 +543,19 @@ async function initAudio() {
   source.connect(input);
   input.connect(filter);
   filter.connect(compressor);
-  compressor.connect(dryGain);
-  compressor.connect(convolver);
-  compressor.connect(delay);
+  const ringModGain = state.audioCtx.createGain();
+  const ringCarrierOsc = state.audioCtx.createOscillator();
+  const ringCarrierDepth = state.audioCtx.createGain();
+  ringModGain.gain.value = 1;
+  ringCarrierDepth.gain.value = 0;
+  ringCarrierOsc.frequency.value = +(ui.sRingModFreq?.value || 80);
+  ringCarrierOsc.connect(ringCarrierDepth);
+  ringCarrierDepth.connect(ringModGain.gain);
+  ringCarrierOsc.start();
+  compressor.connect(ringModGain);
+  ringModGain.connect(dryGain);
+  ringModGain.connect(convolver);
+  ringModGain.connect(delay);
   convolver.connect(wetReverbGain);
   delay.connect(delayFeedback);
   delayFeedback.connect(delay);
@@ -525,6 +578,9 @@ async function initAudio() {
     wetDelayGain,
     dryGain,
     masterGain,
+    ringModGain,
+    ringCarrierOsc,
+    ringCarrierDepth,
     prevSpectrum: new Uint8Array(analyser.frequencyBinCount),
     running: true,
   });
@@ -536,20 +592,12 @@ async function initAudio() {
 
 async function stopAudio() {
   if (!state.running) return;
-
   cancelAnimationFrame(state.animationId);
   disconnectLfo();
+  if (state.ringCarrierOsc) { try { state.ringCarrierOsc.stop(); } catch (_) {} state.ringCarrierOsc.disconnect(); }
   for (const track of state.stream?.getTracks() || []) track.stop();
   if (state.audioCtx) await state.audioCtx.close();
-
-  Object.assign(state, {
-    audioCtx: null,
-    stream: null,
-    input: null,
-    analyser: null,
-    running: false,
-  });
-
+  Object.assign(state, { audioCtx: null, stream: null, input: null, analyser: null, ringModGain: null, ringCarrierOsc: null, ringCarrierDepth: null, running: false });
   setRunningUi();
   setStatus("Stopped");
   drawSilence();
@@ -745,116 +793,228 @@ function renderLoop() {
   state.animationId = requestAnimationFrame(renderLoop);
 }
 
-async function loadPreset(path, textarea) {
-  textarea.value = await fetchText(path);
+// ── Control readers ──────────────────────────────────────────────────────────
+function readSoundControls() {
+  return {
+    name: "Custom",
+    input_gain: +ui.sInputGain.value,
+    master_gain: state.visual.masterVolume,
+    filter: { type: ui.sFilterType.value, frequency: +ui.sFilterFreq.value, q: +ui.sFilterQ.value },
+    compressor: { threshold: -24, knee: 20, ratio: 4, attack: 0.01, release: 0.3 },
+    reverb: { seconds: +ui.sReverbSeconds.value, decay: 2.4, pre_delay_ms: 24, mix: +ui.sReverbMix.value },
+    delay: { time_s: +ui.sDelayTime.value, feedback: +ui.sDelayFeedback.value, mix: +ui.sDelayMix.value },
+    lfo: { enabled: ui.sLfoEnabled.checked, target: ui.sLfoTarget.value, waveform: ui.sLfoWaveform.value, frequency_hz: +ui.sLfoFreq.value, amount: +ui.sLfoAmount.value },
+  };
 }
 
+function readColorControls() {
+  return {
+    name: "Custom",
+    interpolation: ui.cInterpolation.value,
+    reactivity: { energy_to_brightness: +ui.cEnergyBrightness.value, centroid_to_hue_shift: +ui.cCentroidHue.value },
+    voice_range: readVoiceControls(),
+  };
+}
+
+function populateSoundControls(cfg) {
+  ui.sInputGain.value = cfg.input_gain ?? 1;
+  ui.sFilterType.value = cfg.filter?.type ?? "lowpass";
+  ui.sFilterFreq.value = cfg.filter?.frequency ?? 6200;
+  ui.sFilterQ.value = cfg.filter?.q ?? 0.7;
+  ui.sReverbMix.value = cfg.reverb?.mix ?? 0.35;
+  ui.sReverbSeconds.value = cfg.reverb?.seconds ?? 2.8;
+  ui.sDelayTime.value = cfg.delay?.time_s ?? 0.35;
+  ui.sDelayFeedback.value = cfg.delay?.feedback ?? 0.32;
+  ui.sDelayMix.value = cfg.delay?.mix ?? 0.24;
+  ui.sLfoEnabled.checked = cfg.lfo?.enabled ?? false;
+  ui.sLfoTarget.value = cfg.lfo?.target ?? "filter.frequency";
+  ui.sLfoWaveform.value = cfg.lfo?.waveform ?? "sine";
+  ui.sLfoFreq.value = cfg.lfo?.frequency_hz ?? 0.1;
+  ui.sLfoAmount.value = cfg.lfo?.amount ?? 200;
+  updateSoundLabels();
+}
+
+function populateColorControls(cfg) {
+  ui.cInterpolation.value = cfg.interpolation ?? "lab";
+  ui.cEnergyBrightness.value = cfg.reactivity?.energy_to_brightness ?? 0.7;
+  ui.cCentroidHue.value = cfg.reactivity?.centroid_to_hue_shift ?? 0.3;
+  const vr = cfg.voice_range || {};
+  if (vr.floor_hz) ui.voiceFloorHz.value = vr.floor_hz;
+  if (vr.ceiling_hz) ui.voiceCeilingHz.value = vr.ceiling_hz;
+  if (vr.floor_color) ui.voiceFloorColor.value = vr.floor_color;
+  if (vr.ceiling_color) ui.voiceCeilingColor.value = vr.ceiling_color;
+  updateColorLabels();
+  updateLiveControlLabels();
+}
+
+function updateSoundLabels() {
+  ui.sInputGainValue.textContent = (+ui.sInputGain.value).toFixed(2);
+  ui.sFilterFreqValue.textContent = `${Math.round(ui.sFilterFreq.value)} Hz`;
+  ui.sFilterQValue.textContent = (+ui.sFilterQ.value).toFixed(1);
+  ui.sReverbMixValue.textContent = (+ui.sReverbMix.value).toFixed(2);
+  ui.sReverbSecondsValue.textContent = `${(+ui.sReverbSeconds.value).toFixed(1)}s`;
+  ui.sDelayTimeValue.textContent = `${(+ui.sDelayTime.value).toFixed(2)}s`;
+  ui.sDelayFeedbackValue.textContent = (+ui.sDelayFeedback.value).toFixed(2);
+  ui.sDelayMixValue.textContent = (+ui.sDelayMix.value).toFixed(2);
+  ui.sLfoFreqValue.textContent = `${(+ui.sLfoFreq.value).toFixed(2)} Hz`;
+  ui.sLfoAmountValue.textContent = Math.round(ui.sLfoAmount.value);
+  ui.sRingModFreqValue.textContent = `${Math.round(ui.sRingModFreq.value)} Hz`;
+}
+
+function updateColorLabels() {
+  ui.cEnergyBrightnessValue.textContent = (+ui.cEnergyBrightness.value).toFixed(2);
+  ui.cCentroidHueValue.textContent = (+ui.cCentroidHue.value).toFixed(2);
+}
+
+function generateSoundYaml(cfg) {
+  return `name: ${cfg.name}\ninput_gain: ${cfg.input_gain}\nmaster_gain: ${cfg.master_gain}\n\nfilter:\n  type: ${cfg.filter.type}\n  frequency: ${cfg.filter.frequency}\n  q: ${cfg.filter.q}\n\ncompressor:\n  threshold: ${cfg.compressor.threshold}\n  knee: ${cfg.compressor.knee}\n  ratio: ${cfg.compressor.ratio}\n  attack: ${cfg.compressor.attack}\n  release: ${cfg.compressor.release}\n\nreverb:\n  seconds: ${cfg.reverb.seconds}\n  decay: ${cfg.reverb.decay}\n  pre_delay_ms: ${cfg.reverb.pre_delay_ms}\n  mix: ${cfg.reverb.mix}\n\ndelay:\n  time_s: ${cfg.delay.time_s}\n  feedback: ${cfg.delay.feedback}\n  mix: ${cfg.delay.mix}\n\nlfo:\n  enabled: ${cfg.lfo.enabled}\n  target: ${cfg.lfo.target}\n  waveform: ${cfg.lfo.waveform}\n  frequency_hz: ${cfg.lfo.frequency_hz}\n  amount: ${cfg.lfo.amount}\n`;
+}
+
+function generateColorYaml(cfg) {
+  const vr = cfg.voice_range;
+  return `name: ${cfg.name}\ninterpolation: ${cfg.interpolation}\n\nreactivity:\n  energy_to_brightness: ${cfg.reactivity.energy_to_brightness}\n  centroid_to_hue_shift: ${cfg.reactivity.centroid_to_hue_shift}\n\nvoice_range:\n  floor_hz: ${vr.floor_hz}\n  ceiling_hz: ${vr.ceiling_hz}\n  floor_color: "${vr.floor_color}"\n  ceiling_color: "${vr.ceiling_color}"\n`;
+}
+
+// ── Tap tempo ────────────────────────────────────────────────────────────────
+const tapTimes = [];
+let tapResetTimer = null;
+function handleTap() {
+  const now = performance.now();
+  tapTimes.push(now);
+  if (tapTimes.length > 8) tapTimes.shift();
+  clearTimeout(tapResetTimer);
+  tapResetTimer = setTimeout(() => { tapTimes.length = 0; ui.tapBpmDisplay.textContent = "—"; }, 2500);
+  if (tapTimes.length < 2) { ui.tapBpmDisplay.textContent = "…"; return; }
+  let sum = 0;
+  for (let i = 1; i < tapTimes.length; i++) sum += tapTimes[i] - tapTimes[i - 1];
+  const bpm = 60000 / (sum / (tapTimes.length - 1));
+  const subdivMap = { "1/1": 1, "1/2": 0.5, "1/4": 0.25, "1/8": 0.125, "1/16": 0.0625 };
+  const delayTime = clamp((60 / bpm) * (subdivMap[ui.tapSubdiv.value] || 0.25), 0.01, 1.5);
+  ui.sDelayTime.value = delayTime.toFixed(3);
+  ui.sDelayTimeValue.textContent = `${delayTime.toFixed(2)}s`;
+  ui.tapBpmDisplay.textContent = `${Math.round(bpm)} BPM`;
+  if (state.delay) state.delay.delayTime.setTargetAtTime(delayTime, state.audioCtx.currentTime, 0.04);
+}
+
+// ── Ring modulator ───────────────────────────────────────────────────────────
+function applyRingMod() {
+  if (!state.ringModGain) return;
+  const on = ui.sRingModEnabled.checked;
+  const freq = +ui.sRingModFreq.value;
+  ui.sRingModFreqValue.textContent = `${freq} Hz`;
+  const t = state.audioCtx.currentTime;
+  state.ringCarrierOsc.frequency.setTargetAtTime(freq, t, 0.02);
+  state.ringModGain.gain.setTargetAtTime(on ? 0 : 1, t, 0.02);
+  state.ringCarrierDepth.gain.setTargetAtTime(on ? 1 : 0, t, 0.02);
+}
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
 async function bootstrap() {
   resizeCanvas();
   fillPresetSelect(ui.colorPreset, colorPresetList);
   fillPresetSelect(ui.soundPreset, soundPresetList);
-  await loadPreset(colorPresetList[0], ui.colorYaml);
-  await loadPreset(soundPresetList[0], ui.soundYaml);
-  await applyEditors();
-  updateLiveControlLabels();
+
+  const colorText = await fetchText(colorPresetList[0]);
+  const soundText = await fetchText(soundPresetList[0]);
+  ui.colorYaml.value = colorText;
+  ui.soundYaml.value = soundText;
+  const colorCfg = parseYamlText(colorText, "Color YAML");
+  const soundCfg = parseYamlText(soundText, "Sound YAML");
+  populateColorControls(colorCfg);
+  populateSoundControls(soundCfg);
+  applyColorConfig(colorCfg);
+  applySoundConfig(soundCfg);
+  updateSoundLabels();
 
   ui.settingsToggle.addEventListener("click", () => ui.sidebar.classList.add("is-open"));
   ui.closeSidebar.addEventListener("click", () => ui.sidebar.classList.remove("is-open"));
-  ui.backgroundToggle.addEventListener("click", () => {
-    setBackgroundMode(state.backgroundMode === "black" ? "white" : "black");
-  });
+  ui.backgroundToggle.addEventListener("click", () => setBackgroundMode(state.backgroundMode === "black" ? "white" : "black"));
   ui.helpToggle.addEventListener("click", () => ui.helpModal.showModal());
   ui.startMic.addEventListener("click", async () => {
-    try {
-      if (state.running) await stopAudio();
-      else await initAudio();
-    } catch (error) {
-      setStatus(error.message);
-      setRunningUi();
-    }
+    try { if (state.running) await stopAudio(); else await initAudio(); }
+    catch (e) { setStatus(e.message); setRunningUi(); }
   });
   ui.stopMic.addEventListener("click", stopAudio);
-  ui.applyAll.addEventListener("click", async () => {
-    try {
-      await applyEditors();
-    } catch (error) {
-      setStatus(error.message);
-    }
-  });
+  ui.applyAll.addEventListener("click", async () => { try { await applyEditors(); } catch (e) { setStatus(e.message); } });
+
   ui.colorPreset.addEventListener("change", async () => {
-    await loadPreset(ui.colorPreset.value, ui.colorYaml);
-    applyColorConfig(parseYamlText(ui.colorYaml.value, "Color YAML"));
+    const text = await fetchText(ui.colorPreset.value);
+    ui.colorYaml.value = text;
+    const cfg = parseYamlText(text, "Color YAML");
+    populateColorControls(cfg);
+    applyColorConfig(cfg);
     state.dirty.lastColorEdit = null;
   });
   ui.soundPreset.addEventListener("change", async () => {
-    await loadPreset(ui.soundPreset.value, ui.soundYaml);
-    applySoundConfig(parseYamlText(ui.soundYaml.value, "Sound YAML"));
+    const text = await fetchText(ui.soundPreset.value);
+    ui.soundYaml.value = text;
+    const cfg = parseYamlText(text, "Sound YAML");
+    populateSoundControls(cfg);
+    applySoundConfig(cfg);
     state.dirty.lastSoundEdit = null;
   });
-  ui.colorYaml.addEventListener("input", () => {
-    state.dirty.lastColorEdit = "yaml";
+
+  document.getElementById("colorYamlDetails").addEventListener("toggle", function () {
+    if (this.open) ui.colorYaml.value = generateColorYaml(readColorControls());
   });
-  ui.soundYaml.addEventListener("input", () => {
-    state.dirty.lastSoundEdit = "yaml";
+  document.getElementById("soundYamlDetails").addEventListener("toggle", function () {
+    if (this.open) ui.soundYaml.value = generateSoundYaml(readSoundControls());
   });
-  ui.micSensitivity.addEventListener("input", () => {
-    state.visual.micSensitivity = Number(ui.micSensitivity.value);
-    updateLiveControlLabels();
-  });
+  ui.colorYaml.addEventListener("input", () => { state.dirty.lastColorEdit = "yaml"; });
+  ui.soundYaml.addEventListener("input", () => { state.dirty.lastSoundEdit = "yaml"; });
+
+  // Visual controls
+  ui.micSensitivity.addEventListener("input", () => { state.visual.micSensitivity = +ui.micSensitivity.value; updateLiveControlLabels(); });
+  ui.visualIntensity.addEventListener("input", () => { state.visual.intensity = +ui.visualIntensity.value; updateLiveControlLabels(); });
   ui.masterVolume.addEventListener("input", () => {
-    state.visual.masterVolume = Number(ui.masterVolume.value);
+    state.visual.masterVolume = +ui.masterVolume.value;
     updateLiveControlLabels();
-    if (state.masterGain) {
-      const now = state.audioCtx.currentTime;
-      state.masterGain.gain.setTargetAtTime(
-        clamp(state.visual.masterVolume, 0, 2),
-        now, 0.02
-      );
-    }
+    if (state.masterGain) state.masterGain.gain.setTargetAtTime(state.visual.masterVolume, state.audioCtx.currentTime, 0.02);
   });
-  ui.visualIntensity.addEventListener("input", () => {
-    state.visual.intensity = Number(ui.visualIntensity.value);
-    updateLiveControlLabels();
-  });
-  ui.voiceFloorColor.addEventListener("input", () => {
-    state.dirty.lastColorEdit = "controls";
-    applyVoiceControlsToState();
-    if (!state.running) drawSilence();
-  });
-  ui.voiceCeilingColor.addEventListener("input", () => {
-    state.dirty.lastColorEdit = "controls";
-    applyVoiceControlsToState();
-    if (!state.running) drawSilence();
-  });
-  ui.voiceFloorHz.addEventListener("change", () => {
-    state.dirty.lastColorEdit = "controls";
-    applyVoiceControlsToState();
-    if (!state.running) drawSilence();
-  });
-  ui.voiceFloorHz.addEventListener("input", () => {
-    state.dirty.lastColorEdit = "controls";
-  });
-  ui.voiceCeilingHz.addEventListener("change", () => {
-    state.dirty.lastColorEdit = "controls";
-    applyVoiceControlsToState();
-    if (!state.running) drawSilence();
-  });
-  ui.voiceCeilingHz.addEventListener("input", () => {
-    state.dirty.lastColorEdit = "controls";
-  });
-  ui.toggleBlend.addEventListener("change", () => {
-    state.visual.blend = ui.toggleBlend.checked;
-    if (!state.running) drawSilence();
-  });
-  ui.toggleBloom.addEventListener("change", () => {
-    state.visual.bloom = ui.toggleBloom.checked;
-    if (!state.running) drawSilence();
-  });
-  ui.toggleWaveform.addEventListener("change", () => {
-    state.visual.waveform = ui.toggleWaveform.checked;
-    if (!state.running) drawSilence();
-  });
+  ui.cInterpolation.addEventListener("change", () => { state.dirty.lastColorEdit = "controls"; if (state.running) applyColorConfig(readColorControls()); });
+  ui.cEnergyBrightness.addEventListener("input", () => { updateColorLabels(); state.dirty.lastColorEdit = "controls"; if (state.running) applyColorConfig(readColorControls()); });
+  ui.cCentroidHue.addEventListener("input", () => { updateColorLabels(); state.dirty.lastColorEdit = "controls"; if (state.running) applyColorConfig(readColorControls()); });
+  ui.voiceFloorColor.addEventListener("input", () => { state.dirty.lastColorEdit = "controls"; applyVoiceControlsToState(); if (!state.running) drawSilence(); });
+  ui.voiceCeilingColor.addEventListener("input", () => { state.dirty.lastColorEdit = "controls"; applyVoiceControlsToState(); if (!state.running) drawSilence(); });
+  ui.voiceFloorHz.addEventListener("change", () => { state.dirty.lastColorEdit = "controls"; applyVoiceControlsToState(); if (!state.running) drawSilence(); });
+  ui.voiceFloorHz.addEventListener("input", () => { state.dirty.lastColorEdit = "controls"; });
+  ui.voiceCeilingHz.addEventListener("change", () => { state.dirty.lastColorEdit = "controls"; applyVoiceControlsToState(); if (!state.running) drawSilence(); });
+  ui.voiceCeilingHz.addEventListener("input", () => { state.dirty.lastColorEdit = "controls"; });
+  ui.toggleBlend.addEventListener("change", () => { state.visual.blend = ui.toggleBlend.checked; if (!state.running) drawSilence(); });
+  ui.toggleBloom.addEventListener("change", () => { state.visual.bloom = ui.toggleBloom.checked; if (!state.running) drawSilence(); });
+  ui.toggleWaveform.addEventListener("change", () => { state.visual.waveform = ui.toggleWaveform.checked; if (!state.running) drawSilence(); });
+
+  // Sound controls — real-time apply when running
+  function onSoundControl() {
+    updateSoundLabels();
+    state.dirty.lastSoundEdit = "controls";
+    if (state.running) applySoundConfig(readSoundControls());
+  }
+  [ui.sInputGain, ui.sFilterFreq, ui.sFilterQ, ui.sReverbMix, ui.sReverbSeconds,
+    ui.sDelayTime, ui.sDelayFeedback, ui.sDelayMix, ui.sLfoFreq, ui.sLfoAmount
+  ].forEach(el => el.addEventListener("input", onSoundControl));
+  [ui.sFilterType, ui.sLfoEnabled, ui.sLfoTarget, ui.sLfoWaveform
+  ].forEach(el => el.addEventListener("change", onSoundControl));
+
+  // Ring mod
+  ui.sRingModEnabled.addEventListener("change", () => applyRingMod());
+  ui.sRingModFreq.addEventListener("input", () => applyRingMod());
+
+  // Tap tempo
+  ui.tapBtn.addEventListener("click", handleTap);
+
   window.addEventListener("resize", resizeCanvas);
 }
 
 bootstrap().catch((error) => setStatus(error.message));
+
+async function fetchText(path) {
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(`${path}${separator}v=${ASSET_VERSION}`);
+  if (!response.ok) throw new Error(`No se pudo cargar ${path}`);
+  return response.text();
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
