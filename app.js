@@ -76,7 +76,6 @@ const ui = {
   sidebar: document.getElementById("sidebar"),
   startMic: document.getElementById("startMic"),
   stopMic: document.getElementById("stopMic"),
-  backgroundToggle: document.getElementById("backgroundToggle"),
   helpToggle: document.getElementById("helpToggle"),
   helpModal: document.getElementById("helpModal"),
   applyAll: document.getElementById("applyAll"),
@@ -935,7 +934,6 @@ async function bootstrap() {
 
   ui.settingsToggle.addEventListener("click", () => ui.sidebar.classList.add("is-open"));
   ui.closeSidebar.addEventListener("click", () => ui.sidebar.classList.remove("is-open"));
-  ui.backgroundToggle.addEventListener("click", () => setBackgroundMode(state.backgroundMode === "black" ? "white" : "black"));
   ui.helpToggle.addEventListener("click", () => ui.helpModal.showModal());
   ui.startMic.addEventListener("click", async () => {
     try { if (state.running) await stopAudio(); else await initAudio(); }
