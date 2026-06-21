@@ -100,3 +100,6 @@ presets/
 - `js/chroma.js` y `js/js-yaml.min.js` están vendorizados para no depender de internet/CDN en vivo.
 - El Ring Modulator se logró ruteando un `GainNode` controlado por un `OscillatorNode` antes del dry-gain general.
 - No requiere Node, bundler ni instalación de paquetes para correr.
+## License
+
+MIT License — © 2026 [Vladimiro Bellini](https://github.com/vlasvlasvlas). Free to use and modify, attribution required.
